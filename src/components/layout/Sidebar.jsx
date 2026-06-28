@@ -1,10 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { 
-  LayoutDashboard, 
-  Wallet, 
-  TrendingUp, 
-  CreditCard, 
-  Target, 
+import {
+  LayoutDashboard,
+  Wallet,
+  TrendingUp,
+  CreditCard,
+  Target,
   Settings,
   Zap,
   Calculator,
@@ -22,69 +22,60 @@ const menuItems = [
   { path: '/settings', label: 'تنظیمات', icon: Settings, color: 'slate' },
 ]
 
+const colorClasses = {
+  emerald: 'group-hover:text-emerald-400',
+  blue: 'group-hover:text-blue-400',
+  red: 'group-hover:text-red-400',
+  purple: 'group-hover:text-purple-400',
+  amber: 'group-hover:text-amber-400',
+  slate: 'group-hover:text-slate-300',
+}
+
+const activeColorClasses = {
+  emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  blue: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+  red: 'bg-red-500/10 text-red-400 border-red-500/30',
+  purple: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+  amber: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  slate: 'bg-slate-500/10 text-slate-300 border-slate-500/30',
+}
+
 export default function Sidebar() {
   return (
-    <aside className="w-72 h-screen flex flex-col animate-slide-in-right" dir="rtl">
-      {/* پس‌زمینه شیشه‌ای */}
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-900/95 to-slate-950/95 backdrop-blur-3xl border-l border-slate-800/50" />
-      
-      {/* محتوای منو */}
-      <div className="relative z-10 flex flex-col h-full p-6">
-        {/* لوگو */}
-        <div className="mb-10 px-2">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center glow-green-ultra animate-pulse-glow">
-              <Zap className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-gradient-ultra">مسترلاین</h1>
-              <p className="text-xs text-slate-400 mt-1">دستیار مالی تریدر</p>
-            </div>
-          </div>
-        </div>
-        
-        {/* منو */}
-        <nav className="flex-1 space-y-2">
-          {menuItems.map((item, index) => (
+    <aside className="w-64 bg-slate-900 border-l border-slate-800 flex flex-col" dir="rtl">
+      {/* هدر */}
+      <div className="p-6 border-b border-slate-800">
+        <h1 className="text-2xl font-bold text-blue-400">Masterline</h1>
+        <p className="text-xs text-slate-500 mt-1">مدیریت مالی هوشمند</p>
+      </div>
+
+      {/* منو */}
+      <nav className="flex-1 p-4 space-y-1 overflow-auto">
+        {menuItems.map((item) => {
+          const Icon = item.icon
+          return (
             <NavLink
               key={item.path}
               to={item.path}
               end={item.path === '/'}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-500 ease-out group relative overflow-hidden ${
+                `group flex items-center gap-3 px-4 py-3 rounded-lg border transition-all ${
                   isActive
-                    ? 'bg-gradient-to-l from-emerald-500/20 to-transparent border-2 border-emerald-500/40 text-white glow-green-ultra'
-                    : 'text-slate-400 hover:bg-slate-800/50 hover:text-white border-2 border-transparent'
+                    ? activeColorClasses[item.color]
+                    : `border-transparent text-slate-400 hover:bg-slate-800/50 ${colorClasses[item.color]}`
                 }`
               }
-              style={{ animationDelay: `${index * 0.05}s` }}
             >
-              {/* افکت hover */}
-              <div className="absolute inset-0 bg-gradient-to-l from-emerald-500/0 to-emerald-500/0 group-hover:from-emerald-500/10 group-hover:to-transparent transition-all duration-500" />
-              
-              <item.icon className="w-5 h-5 relative z-10 group-hover:scale-110 transition-transform duration-500" />
-              <span className="text-sm font-bold relative z-10">{item.label}</span>
-              
-              {item.path === '/' && (
-                <div className="mr-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse-glow relative z-10" />
-              )}
+              <Icon className="w-5 h-5 shrink-0" />
+              <span className="text-sm font-medium">{item.label}</span>
             </NavLink>
-          ))}
-        </nav>
-        
-        {/* فوتر */}
-        <div className="px-4 py-4 border-t-2 border-slate-800/50 mt-4">
-          <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-800/30 hover:bg-slate-800/50 transition-all duration-300 cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-blue-500 flex items-center justify-center text-white text-sm font-black shadow-lg">
-              A
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-white font-bold">کاربر</p>
-              <p className="text-xs text-slate-400">نسخه 1.0.0</p>
-            </div>
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-glow" />
-          </div>
-        </div>
+          )
+        })}
+      </nav>
+
+      {/* فوتر */}
+      <div className="p-4 border-t border-slate-800">
+        <div className="text-xs text-slate-600 text-center">نسخه 0.1.0</div>
       </div>
     </aside>
   )
