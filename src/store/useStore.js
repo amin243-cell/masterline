@@ -3,8 +3,30 @@ import { persist } from 'zustand/middleware'
 
 const useStore = create(
   persist(
-    (set) => ({
-      // خلاصه وضعیت مالی
+    (set, get) => ({
+      // ==================== تنظیمات برنامه ====================
+      settings: {
+        theme: 'dark',
+        language: 'fa',
+        currency: 'IRR',
+        notifications: true,
+        sound: true,
+        autoBackup: true,
+      },
+
+      // ==================== تاریخچه نوتیفیکیشن‌ها ====================
+      notificationHistory: [],
+      
+      // ==================== تنظیمات نوتیفیکیشن ====================
+      notificationSettings: {
+        loans: { enabled: true, beforeDays: [3, 1, 0] },
+        subscriptions: { enabled: true, beforeDays: [7, 3, 0] },
+        goals: { enabled: true, milestones: [25, 50, 75, 100] },
+        reminders: { enabled: true, beforeMinutes: [60, 30, 0] },
+        doNotDisturb: { enabled: false, start: '23:00', end: '08:00' },
+      },
+
+      // ==================== خلاصه وضعیت مالی ====================
       summary: {
         netWorth: 24856.32,
         monthlyPnL: 380,
@@ -12,7 +34,7 @@ const useStore = create(
         totalInvestments: 50000,
       },
       
-      // حساب‌های مالی
+      // ==================== حساب‌های مالی ====================
       accounts: [
         { id: 1, name: 'بایننس فیوچرز', balance: 24856.32, currency: 'USDT', category: 'trading' },
         { id: 2, name: 'صرافی نوبیتکس', balance: 15000000, currency: 'IRR', category: 'trading' },
@@ -23,7 +45,7 @@ const useStore = create(
         { id: 7, name: 'کیف پول لجر', balance: 2.5, currency: 'ETH', category: 'crypto' },
       ],
       
-      // دارایی‌های فیزیکی
+      // ==================== دارایی‌های فیزیکی ====================
       assets: [
         { id: 1, name: 'سکه تمام بهار آزادی', amount: 5, unit: 'عدد', category: 'gold', buyPrice: 42000000, currentPrice: 45000000, buyDate: '1402/08/15', note: 'خرید از بازار تهران' },
         { id: 2, name: 'طلای آب شده', amount: 12.4, unit: 'گرم', category: 'gold', buyPrice: 3500000, currentPrice: 3800000, buyDate: '1403/01/10', note: '' },
@@ -32,14 +54,14 @@ const useStore = create(
         { id: 5, name: 'پول نقد در منزل', amount: 50000000, unit: 'ریال', category: 'cash', buyPrice: 50000000, currentPrice: 50000000, buyDate: '1403/04/01', note: 'پس‌انداز اضطراری' },
       ],
 
-      // فعالیت‌های ترید
+      // ==================== فعالیت‌های ترید ====================
       activities: [
         { id: 1, type: 'profit', accountId: 1, amount: 150, date: '1403/04/25', description: 'سود ترید BTC' },
         { id: 2, type: 'loss', accountId: 1, amount: 45, date: '1403/04/24', description: 'ضرر ترید ETH' },
         { id: 3, type: 'deposit', accountId: 3, amount: 5000000, date: '1403/04/20', description: 'واریز ماهانه' },
       ],
 
-      // وام‌های بانکی
+      // ==================== وام‌های بانکی ====================
       loans: [
         { 
           id: 1, 
@@ -58,7 +80,7 @@ const useStore = create(
         },
       ],
 
-      // اشتراک‌ها
+      // ==================== اشتراک‌ها ====================
       subscriptions: [
         { 
           id: 1, 
@@ -98,7 +120,7 @@ const useStore = create(
         },
       ],
 
-      // بدهی‌های شخصی
+      // ==================== بدهی‌های شخصی ====================
       debts: [
         { 
           id: 1, 
@@ -124,7 +146,7 @@ const useStore = create(
         },
       ],
 
-      // اهداف
+      // ==================== اهداف ====================
       goals: [
         { 
           id: 1, 
@@ -148,7 +170,7 @@ const useStore = create(
         },
         { 
           id: 3, 
-          title: 'رسیدن به ۱۰۰ هزار دلار', 
+          title: 'رسیدن به ۱۰ هزار دلار', 
           type: 'investment',
           targetAmount: 100000, 
           currentAmount: 24856, 
@@ -158,7 +180,7 @@ const useStore = create(
         },
       ],
 
-      // یادآورها
+      // ==================== یادآورها ====================
       reminders: [
         { 
           id: 1, 
@@ -185,6 +207,65 @@ const useStore = create(
           note: 'بررسی هفتگی' 
         },
       ],
+
+      // ==================== توابع تنظیمات ====================
+      updateSettings: (newSettings) => set((state) => ({
+        settings: { ...state.settings, ...newSettings }
+      })),
+
+      // ==================== توابع نوتیفیکیشن ====================
+      updateNotificationSettings: (newSettings) => set((state) => ({
+        notificationSettings: { ...state.notificationSettings, ...newSettings }
+      })),
+      
+      addNotificationToHistory: (notification) => set((state) => ({
+        notificationHistory: [
+          { ...notification, id: Date.now(), timestamp: new Date().toISOString(), read: false },
+          ...state.notificationHistory
+        ].slice(0, 100)
+      })),
+      
+      clearNotificationHistory: () => set({ notificationHistory: [] }),
+
+      // ==================== توابع پشتیبان‌گیری ====================
+      resetAllData: () => set({
+        summary: {
+          netWorth: 0,
+          monthlyPnL: 0,
+          totalDebts: 0,
+          totalInvestments: 0,
+        },
+        accounts: [],
+        assets: [],
+        activities: [],
+        loans: [],
+        subscriptions: [],
+        debts: [],
+        goals: [],
+        reminders: [],
+      }),
+
+      importAllData: (data) => set((state) => ({
+        summary: data.summary || state.summary,
+        accounts: data.accounts || state.accounts,
+        assets: data.assets || state.assets,
+        activities: data.activities || state.activities,
+        loans: data.loans || state.loans,
+        subscriptions: data.subscriptions || state.subscriptions,
+        debts: data.debts || state.debts,
+        goals: data.goals || state.goals,
+        reminders: data.reminders || state.reminders,
+        settings: data.settings || state.settings,
+      })),
+
+      // ==================== توابع مدیریت دیتابیس ====================
+      trackDatabaseChange: () => {
+        const now = new Date().toISOString()
+        localStorage.setItem('masterline-storage-last-modified', now)
+        if (!localStorage.getItem('masterline-storage-first-entry')) {
+          localStorage.setItem('masterline-storage-first-entry', now)
+        }
+      },
 
       // ==================== توابع مدیریت حساب‌ها ====================
       addAccount: (account) => set((state) => ({
@@ -328,7 +409,7 @@ const useStore = create(
       })),
     }),
     {
-      name: 'masterline-storage', // نام کلید در localStorage
+      name: 'masterline-storage',
     }
   )
 )

@@ -6,9 +6,9 @@ import {
   CreditCard,
   Target,
   Settings,
-  Zap,
   Calculator,
-  BarChart3
+  BarChart3,
+  Bell
 } from 'lucide-react'
 
 const menuItems = [
@@ -19,6 +19,7 @@ const menuItems = [
   { path: '/goals', label: 'اهداف و یادآورها', icon: Target, color: 'purple' },
   { path: '/tools', label: 'ابزارهای تریدر', icon: Calculator, color: 'amber' },
   { path: '/analytics', label: 'آمار و گزارش‌ها', icon: BarChart3, color: 'blue' },
+  { path: '/notifications', label: 'نوتیفیکیشن‌ها', icon: Bell, color: 'amber' },
   { path: '/settings', label: 'تنظیمات', icon: Settings, color: 'slate' },
 ]
 
