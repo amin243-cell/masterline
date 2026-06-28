@@ -1,0 +1,672 @@
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100..900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* رنگ‌های اصلی با گرادیانت */
+    --color-primary-start: #10b981;
+    --color-primary-end: #059669;
+    --color-danger: #ef4444;
+    --color-warning: #f59e0b;
+    --color-info: #3b82f6;
+    
+    /* پس‌زمینه‌های چندلایه */
+    --bg-base: #020617;
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-card: rgba(30, 41, 59, 0.7);
+    --bg-card-hover: rgba(51, 65, 85, 0.9);
+    
+    /* متن */
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    
+    /* بوردر */
+    --border-subtle: rgba(51, 65, 85, 0.5);
+    --border-default: rgba(71, 85, 105, 0.6);
+    --border-strong: rgba(100, 116, 139, 0.8);
+    
+    /* سایه‌های بسیار قوی و چندلایه */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 2px 8px 0 rgba(0, 0, 0, 0.6);
+    --shadow-md: 0 8px 16px -4px rgba(0, 0, 0, 0.7), 0 4px 8px -2px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 16px 32px -8px rgba(0, 0, 0, 0.8), 0 8px 16px -4px rgba(0, 0, 0, 0.6);
+    --shadow-xl: 0 32px 64px -16px rgba(0, 0, 0, 0.9), 0 16px 32px -8px rgba(0, 0, 0, 0.7);
+    --shadow-2xl: 0 48px 96px -24px rgba(0, 0, 0, 1), 0 24px 48px -12px rgba(0, 0, 0, 0.8);
+    
+    /* سایه‌های رنگی قوی */
+    --shadow-glow-green: 0 0 40px rgba(16, 185, 129, 0.5), 0 0 80px rgba(16, 185, 129, 0.3), 0 0 120px rgba(16, 185, 129, 0.1);
+    --shadow-glow-red: 0 0 40px rgba(239, 68, 68, 0.5), 0 0 80px rgba(239, 68, 68, 0.3), 0 0 120px rgba(239, 68, 68, 0.1);
+    --shadow-glow-blue: 0 0 40px rgba(59, 130, 246, 0.5), 0 0 80px rgba(59, 130, 246, 0.3), 0 0 120px rgba(59, 130, 246, 0.1);
+    --shadow-glow-amber: 0 0 40px rgba(245, 158, 11, 0.5), 0 0 80px rgba(245, 158, 11, 0.3), 0 0 120px rgba(245, 158, 11, 0.1);
+    --shadow-glow-purple: 0 0 40px rgba(168, 85, 247, 0.5), 0 0 80px rgba(168, 85, 247, 0.3), 0 0 120px rgba(168, 85, 247, 0.1);
+    
+    /* گردی بسیار زیاد */
+    --radius-xs: 0.5rem;
+    --radius-sm: 0.75rem;
+    --radius-md: 1rem;
+    --radius-lg: 1.5rem;
+    --radius-xl: 2rem;
+    --radius-2xl: 2.5rem;
+    --radius-3xl: 3rem;
+    
+    /* فاصله‌گذاری */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    
+    /* ترنزیشن */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  * {
+    border-color: var(--border-subtle);
+  }
+
+  body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16, 185, 129, 0.1), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(59, 130, 246, 0.05), transparent),
+      linear-gradient(135deg, var(--bg-base) 0%, var(--bg-primary) 100%);
+    color: var(--text-primary);
+    font-family: 'Vazirmatn', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    direction: rtl;
+    font-size: 14px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* اسکرول‌بار حرفه‌ای */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--bg-base);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--bg-tertiary), var(--bg-secondary));
+    border-radius: 10px;
+    border: 2px solid var(--bg-base);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #475569, var(--bg-tertiary));
+  }
+}
+
+@layer components {
+  /* ===== کارت‌های فوق حرفه‌ای ===== */
+  .card-ultra {
+    @apply rounded-3xl border backdrop-blur-2xl;
+    background: var(--bg-card);
+    border-color: var(--border-subtle);
+    box-shadow: var(--shadow-xl);
+    transition: all var(--transition-slow);
+  }
+
+  .card-ultra:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-default);
+    box-shadow: var(--shadow-2xl);
+    transform: translateY(-4px) scale(1.01);
+  }
+
+  .card-glass-ultra {
+    @apply rounded-3xl border backdrop-blur-3xl;
+    background: rgba(30, 41, 59, 0.5);
+    border-color: rgba(148, 163, 184, 0.15);
+    box-shadow: var(--shadow-xl), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* ===== دکمه‌های فوق حرفه‌ای ===== */
+  .btn-ultra {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-sm
+           transition-all duration-500 ease-out
+           focus:outline-none focus:ring-4 focus:ring-offset-4
+           disabled:opacity-50 disabled:cursor-not-allowed;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .btn-ultra-primary {
+    @apply text-white;
+    background: linear-gradient(135deg, var(--color-primary-start), var(--color-primary-end));
+    box-shadow: var(--shadow-glow-green);
+  }
+
+  .btn-ultra-primary:hover {
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 0 60px rgba(16, 185, 129, 0.7), 0 0 120px rgba(16, 185, 129, 0.4), 0 0 160px rgba(16, 185, 129, 0.2);
+  }
+
+  .btn-ultra-primary:active {
+    transform: translateY(-1px) scale(1.01);
+  }
+
+  .btn-ultra-secondary {
+    @apply text-slate-200 border border-slate-700;
+    background: rgba(51, 65, 85, 0.4);
+    backdrop-filter: blur(20px);
+  }
+
+  .btn-ultra-secondary:hover {
+    @apply text-white;
+    background: rgba(71, 85, 105, 0.6);
+    border-color: var(--border-strong);
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: var(--shadow-xl);
+  }
+
+  .btn-ultra-danger {
+    @apply text-white;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    box-shadow: var(--shadow-glow-red);
+  }
+
+  .btn-ultra-danger:hover {
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 0 60px rgba(239, 68, 68, 0.7), 0 0 120px rgba(239, 68, 68, 0.4), 0 0 160px rgba(239, 68, 68, 0.2);
+  }
+
+  .btn-ultra-ghost {
+    @apply text-slate-400;
+    background: transparent;
+  }
+
+  .btn-ultra-ghost:hover {
+    @apply text-white;
+    background: rgba(51, 65, 85, 0.4);
+  }
+
+  .btn-icon-ultra {
+  @apply p-3 rounded-2xl text-slate-400 cursor-pointer
+         transition-all duration-300 ease-out;
+  background: rgba(51, 65, 85, 0.3);
+  border: 1px solid transparent;
+}
+
+.btn-icon-ultra:hover {
+  @apply text-white;
+  background: rgba(71, 85, 105, 0.5);
+  border-color: var(--border-default);
+}
+
+.btn-icon-danger:hover {
+  @apply text-red-400 cursor-pointer;
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+  /* ===== اینپوت‌های فوق حرفه‌ای ===== */
+  .input-ultra {
+    @apply w-full rounded-2xl px-5 py-4 text-sm text-white
+           placeholder:text-slate-500
+           focus:outline-none
+           transition-all duration-500 ease-out;
+    background: rgba(30, 41, 59, 0.6);
+    border: 2px solid var(--border-subtle);
+    backdrop-filter: blur(20px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .input-ultra:focus {
+  border-color: rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15), var(--shadow-lg);
+  background: rgba(30, 41, 59, 0.8);
+}
+
+  .input-ultra:hover {
+  border-color: var(--border-default);
+}
+
+  /* ===== لیبل‌های فوق حرفه‌ای ===== */
+  .label-ultra {
+    @apply text-sm font-bold text-slate-300 block mb-3;
+  }
+
+  /* ===== هدر صفحه فوق حرفه‌ای ===== */
+  .page-header-ultra {
+    @apply flex items-center justify-between mb-10;
+  }
+
+  .page-title-ultra {
+    @apply text-4xl font-black;
+    background: linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 40px rgba(248, 250, 252, 0.3);
+  }
+
+  .page-subtitle-ultra {
+    @apply text-base text-slate-400 mt-3;
+  }
+
+  /* ===== کارت آمار فوق حرفه‌ای ===== */
+  .stat-card-ultra {
+    @apply rounded-3xl border p-6
+           transition-all duration-700 ease-out;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+    border-color: var(--border-subtle);
+    box-shadow: var(--shadow-xl);
+    backdrop-filter: blur(30px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card-ultra::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.6), transparent);
+    opacity: 0;
+    transition: opacity var(--transition-slow);
+  }
+
+  .stat-card-ultra:hover::before {
+    opacity: 1;
+  }
+
+  .stat-card-ultra:hover {
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: var(--shadow-2xl);
+    border-color: var(--border-default);
+  }
+
+  .stat-icon-ultra {
+    @apply w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0
+           transition-all duration-500;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .stat-card-ultra:hover .stat-icon-ultra {
+    transform: scale(1.15) rotate(8deg);
+    box-shadow: var(--shadow-glow-green);
+  }
+
+  /* ===== کارت آیتم فوق حرفه‌ای ===== */
+  .item-card-ultra {
+    @apply rounded-3xl border p-6 
+           transition-all duration-700 ease-out;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8));
+    border-color: var(--border-subtle);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(30px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .item-card-ultra::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), transparent);
+    opacity: 0;
+    transition: opacity var(--transition-slow);
+  }
+
+  .item-card-ultra:hover::after {
+    opacity: 1;
+  }
+
+  .item-card-ultra:hover {
+    transform: translateY(-5px) scale(1.01);
+    box-shadow: var(--shadow-2xl);
+    border-color: var(--border-default);
+  }
+
+  /* ===== Badge های فوق حرفه‌ای ===== */
+  .badge-ultra {
+    @apply px-4 py-2 rounded-2xl text-xs font-bold inline-flex items-center gap-2
+           transition-all duration-300;
+    backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .badge-success-ultra {
+    @apply text-emerald-400;
+    background: rgba(16, 185, 129, 0.15);
+    border: 2px solid rgba(16, 185, 129, 0.4);
+  }
+
+  .badge-danger-ultra {
+    @apply text-red-400;
+    background: rgba(239, 68, 68, 0.15);
+    border: 2px solid rgba(239, 68, 68, 0.4);
+  }
+
+  .badge-warning-ultra {
+    @apply text-amber-400;
+    background: rgba(245, 158, 11, 0.15);
+    border: 2px solid rgba(245, 158, 11, 0.4);
+  }
+
+  .badge-info-ultra {
+    @apply text-blue-400;
+    background: rgba(59, 130, 246, 0.15);
+    border: 2px solid rgba(59, 130, 246, 0.4);
+  }
+
+  /* ===== فرم‌های فوق حرفه‌ای ===== */
+  .form-section-ultra {
+    @apply space-y-6;
+  }
+
+  .form-row-ultra {
+    @apply grid grid-cols-1 md:grid-cols-2 gap-6;
+  }
+
+  .form-group-ultra {
+    @apply space-y-3;
+  }
+
+  /* ===== نوار جستجو فوق حرفه‌ای ===== */
+  .search-bar-ultra {
+    @apply relative flex-1 max-w-md;
+  }
+
+  .search-bar-ultra input {
+    @apply w-full rounded-2xl px-5 py-4 pr-12 text-sm text-white
+           placeholder:text-slate-500
+           focus:outline-none
+           transition-all duration-500;
+    background: rgba(30, 41, 59, 0.6);
+    border: 2px solid var(--border-subtle);
+    backdrop-filter: blur(20px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .search-bar-ultra input:focus {
+    border-color: rgba(16, 185, 129, 0.6);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15), var(--shadow-lg);
+    background: rgba(30, 41, 59, 0.8);
+    transform: translateY(-2px);
+  }
+
+  .search-bar-ultra .search-icon {
+    @apply absolute right-4 top-4 w-5 h-5 text-slate-500;
+  }
+
+  /* ===== تب‌های فوق حرفه‌ای ===== */
+  .tab-bar-ultra {
+    @apply flex gap-4 mb-8 flex-wrap;
+  }
+
+  .tab-button-ultra {
+    @apply px-6 py-3 rounded-2xl font-bold text-sm
+           border transition-all duration-500 ease-out
+           flex items-center gap-2;
+    background: rgba(30, 41, 59, 0.4);
+    border-color: var(--border-subtle);
+    color: var(--text-secondary);
+    backdrop-filter: blur(10px);
+  }
+
+  .tab-button-ultra:hover {
+    background: rgba(51, 65, 85, 0.5);
+    border-color: var(--border-default);
+    color: var(--text-primary);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .tab-button-active-ultra {
+    @apply text-white;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.3));
+    border-color: rgba(16, 185, 129, 0.6);
+    box-shadow: var(--shadow-glow-green);
+  }
+
+  /* ===== حالت خالی فوق حرفه‌ای ===== */
+  .empty-state-ultra {
+    @apply text-center py-20 rounded-3xl border;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.6));
+    border-color: var(--border-subtle);
+    backdrop-filter: blur(30px);
+    box-shadow: var(--shadow-xl);
+  }
+
+  /* ===== Divider فوق حرفه‌ای ===== */
+  .divider-ultra {
+    @apply h-px my-8;
+    background: linear-gradient(90deg, transparent, var(--border-default), transparent);
+  }
+
+  /* ===== Progress Bar فوق حرفه‌ای ===== */
+  .progress-ultra {
+    @apply rounded-full overflow-hidden;
+    background: rgba(51, 65, 85, 0.5);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+
+  .progress-ultra-fill {
+    @apply h-full rounded-full transition-all duration-1000 ease-out;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    box-shadow: var(--shadow-glow-green);
+  }
+}
+/* ===== رفع مشکلات عمومی ===== */
+button, [type="button"], [type="submit"] {
+  cursor: pointer !important;
+}
+
+/* جلوگیری از پرش فرم‌ها */
+input:focus, select:focus, textarea:focus {
+  transform: none !important;
+}
+
+/* دکمه‌های آیکون */
+button[class*="btn-icon"] {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+/* Dialog backdrop */
+[data-radix-dialog-overlay] {
+  backdrop-filter: blur(4px) !important;
+}
+
+@layer utilities {
+  /* انیمیشن‌های فوق حرفه‌ای */
+  @keyframes fadeInUp {
+    from { 
+      opacity: 0; 
+      transform: translateY(30px); 
+    }
+    to { 
+      opacity: 1; 
+      transform: translateY(0); 
+    }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideInRight {
+    from { 
+      opacity: 0; 
+      transform: translateX(40px); 
+    }
+    to { 
+      opacity: 1; 
+      transform: translateX(0); 
+    }
+  }
+
+  @keyframes slideInLeft {
+    from { 
+      opacity: 0; 
+      transform: translateX(-40px); 
+    }
+    to { 
+      opacity: 1; 
+      transform: translateX(0); 
+    }
+  }
+
+  @keyframes scaleIn {
+    from { 
+      opacity: 0; 
+      transform: scale(0.85); 
+    }
+    to { 
+      opacity: 1; 
+      transform: scale(1); 
+    }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { 
+      opacity: 0.6; 
+      transform: scale(1);
+    }
+    50% { 
+      opacity: 1; 
+      transform: scale(1.15);
+    }
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-out forwards;
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .animate-slide-in-left {
+    animation: slideInLeft 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2.5s ease-in-out infinite;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  /* تاخیر انیمیشن */
+  .delay-75 { animation-delay: 75ms; }
+  .delay-100 { animation-delay: 100ms; }
+  .delay-150 { animation-delay: 150ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-400 { animation-delay: 400ms; }
+  .delay-500 { animation-delay: 500ms; }
+  .delay-700 { animation-delay: 700ms; }
+  .delay-1000 { animation-delay: 1000ms; }
+
+  /* Glass effect فوق حرفه‌ای */
+  .glass-ultra {
+    @apply backdrop-blur-3xl border;
+    background: rgba(30, 41, 59, 0.5);
+    border-color: rgba(148, 163, 184, 0.15);
+    box-shadow: var(--shadow-xl), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* Grid pattern */
+  .bg-grid-ultra {
+    background-image: 
+      linear-gradient(rgba(16, 185, 129, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(16, 185, 129, 0.08) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  /* Gradient text */
+  .text-gradient-ultra {
+    background: linear-gradient(135deg, #10b981, #34d399, #6ee7b7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-danger {
+    background: linear-gradient(135deg, #ef4444, #f87171, #fca5a5);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-blue {
+    background: linear-gradient(135deg, #3b82f6, #60a5fa, #93c5fd);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Scrollbar فوق حرفه‌ای */
+  .custom-scrollbar-ultra {
+    @apply overflow-y-auto;
+  }
+
+  .custom-scrollbar-ultra::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .custom-scrollbar-ultra::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--bg-tertiary), var(--bg-secondary));
+    border-radius: 10px;
+  }
+
+  /* Glow effects */
+  .glow-green-ultra {
+    box-shadow: var(--shadow-glow-green);
+  }
+
+  .glow-red-ultra {
+    box-shadow: var(--shadow-glow-red);
+  }
+
+  .glow-blue-ultra {
+    box-shadow: var(--shadow-glow-blue);
+  }
+
+  .glow-amber-ultra {
+    box-shadow: var(--shadow-glow-amber);
+  }
+
+  .glow-purple-ultra {
+    box-shadow: var(--shadow-glow-purple);
+  }
+}
