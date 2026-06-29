@@ -1,46 +1,64 @@
+import { 
+  isPermissionGranted, 
+  requestPermission, 
+  sendNotification 
+} from '@tauri-apps/plugin-notification'
 import useStore from '../store/useStore'
 
-// بررسی مجوز
+// ==================== بررسی مجوز (با Tauri) ====================
 export const checkNotificationPermission = async () => {
-  if (!('Notification' in window)) {
-    return false
-  }
-  
-  if (Notification.permission === 'granted') {
-    return true
-  }
-  
-  if (Notification.permission === 'denied') {
-    return false
-  }
-  
   try {
-    const permission = await Notification.requestPermission()
-    return permission === 'granted'
+    const granted = await isPermissionGranted()
+    return granted
   } catch (error) {
+    console.error('Error checking notification permission:', error)
     return false
   }
 }
 
-// ارسال نوتیفیکیشن
-export const sendDesktopNotification = async (options) => {
-  const { title, body } = options
-  
+// ==================== درخواست مجوز (با Tauri) ====================
+export const requestNotificationPermission = async () => {
   try {
-    const permissionGranted = await checkNotificationPermission()
-    if (!permissionGranted) {
-      console.warn('Notification permission not granted')
-      return false
+    const permission = await requestPermission()
+    return permission === 'granted'
+  } catch (error) {
+    console.error('Error requesting notification permission:', error)
+    return false
+  }
+}
+
+// ==================== ارسال نوتیفیکیشن (با Tauri) ====================
+export const sendDesktopNotification = async (options) => {
+  const { title, body, icon, sound, actions } = options
+  const state = useStore.getState()
+  
+  // بررسی تنظیمات
+  if (!state.settings?.notifications) {
+    console.log('Notifications are disabled')
+    return false
+  }
+
+  try {
+    // بررسی مجوز
+    let granted = await isPermissionGranted()
+    if (!granted) {
+      granted = await requestPermission()
+      if (!granted) {
+        console.warn('Notification permission not granted')
+        return false
+      }
     }
-    
-    const notification = new Notification(title, {
-      body,
-      dir: 'rtl',
-      lang: 'fa',
+
+    // ارسال اعلان با Tauri
+    sendNotification({
+      title: title || 'Masterline',
+      body: body || '',
+      icon: icon || null,
+      sound: (state.settings?.sound && sound) ? sound : null,
+      actions: actions || [],
     })
-    
-    setTimeout(() => notification.close(), 5000)
-    
+
+    // ذخیره در تاریخچه
     addToNotificationHistory({
       title,
       body,
@@ -48,7 +66,7 @@ export const sendDesktopNotification = async (options) => {
       timestamp: new Date().toISOString(),
       read: false,
     })
-    
+
     return true
   } catch (error) {
     console.error('Error sending notification:', error)
@@ -56,11 +74,13 @@ export const sendDesktopNotification = async (options) => {
   }
 }
 
+// ==================== توابع مدیریت تاریخچه ====================
+
 export const addToNotificationHistory = (notification) => {
   const state = useStore.getState()
   const history = state.notificationHistory || []
   const updatedHistory = [
-    { ...notification, id: Date.now() + Math.random() }, 
+    { ...notification, id: Date.now() + Math.random() },
     ...history
   ].slice(0, 100)
   
@@ -94,13 +114,16 @@ export const deleteNotification = (id) => {
   useStore.setState({ notificationHistory: updatedHistory })
 }
 
+// ==================== توابع اختصاصی ====================
+
 export const sendLoanReminder = async (loan) => {
   const state = useStore.getState()
   if (!state.settings.notifications) return
   
   await sendDesktopNotification({
     title: 'یادآوری پرداخت وام',
-    body: 'قسط وام "' + loan.name + '" به مبلغ ' + loan.monthlyPayment.toLocaleString() + ' ریال سررسید شده است',
+    body: `قسط وام "${loan.name}" به مبلغ ${loan.monthlyPayment.toLocaleString()} ریال سررسید شده است`,
+    sound: 'notification.wav',
   })
 }
 
@@ -110,7 +133,8 @@ export const sendSubscriptionReminder = async (subscription) => {
   
   await sendDesktopNotification({
     title: 'تمدید اشتراک',
-    body: 'اشتراک "' + subscription.name + '" در تاریخ ' + subscription.nextRenewal + ' تمدید می‌شود',
+    body: `اشتراک "${subscription.name}" در تاریخ ${subscription.nextRenewal} تمدید می‌شود`,
+    sound: 'notification.wav',
   })
 }
 
@@ -120,7 +144,8 @@ export const sendGoalReminder = async (goal, percentage) => {
   
   await sendDesktopNotification({
     title: 'پیشرفت هدف مالی',
-    body: 'هدف "' + goal.title + '" به ' + percentage + '% رسید!',
+    body: `هدف "${goal.title}" به ${percentage}% رسید!`,
+    sound: 'notification.wav',
   })
 }
 
@@ -131,8 +156,11 @@ export const sendGeneralReminder = async (reminder) => {
   await sendDesktopNotification({
     title: reminder.title,
     body: reminder.note || 'یادآوری برنامه',
+    sound: 'notification.wav',
   })
 }
+
+// ==================== چک‌کننده خودکار ====================
 
 export const checkScheduledNotifications = async () => {
   const state = useStore.getState()
@@ -141,7 +169,8 @@ export const checkScheduledNotifications = async () => {
     if (goal.status !== 'completed') {
       const percentage = Math.round((goal.currentAmount / goal.targetAmount) * 100)
       
-      if (percentage === 25 || percentage === 50 || percentage === 75 || percentage === 100) {
+      const milestones = [25, 50, 75, 100]
+      if (milestones.includes(percentage)) {
         sendGoalReminder(goal, percentage)
       }
     }
@@ -154,9 +183,36 @@ export const startNotificationScheduler = () => {
   return interval
 }
 
+// ==================== تست ====================
+
 export const sendTestNotification = async () => {
-  await sendDesktopNotification({
-    title: 'تست نوتیفیکیشن',
-    body: 'این یک نوتیفیکیشن تستی است. اگر این را می‌بینید، سیستم نوتیفیکیشن به درستی کار می‌کند!',
-  })
+  const state = useStore.getState()
+  
+  if (!state.settings?.notifications) {
+    useStore.getState().updateSettings({ notifications: true })
+  }
+
+  if (state.settings?.sound) {
+    try {
+      await sendDesktopNotification({
+        title: '🔊 تست صدا',
+        body: 'اگر این پیام را می‌بینید و صدا را می‌شنوید، همه چیز درست کار می‌کند.',
+        sound: 'notification.wav',
+        icon: '/logo.png',
+      })
+    } catch (err) {
+      console.error('Sound test error:', err)
+      await sendDesktopNotification({
+        title: '🔔 تست نوتیفیکیشن',
+        body: 'اگر این پیام را می‌بینید، نوتیفیکیشن به درستی کار می‌کند.',
+        icon: '/logo.png',
+      })
+    }
+  } else {
+    await sendDesktopNotification({
+      title: '🔔 تست نوتیفیکیشن',
+      body: 'اگر این پیام را می‌بینید، نوتیفیکیشن به درستی کار می‌کند.',
+      icon: '/logo.png',
+    })
+  }
 }

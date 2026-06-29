@@ -12,6 +12,14 @@ const useStore = create(
         notifications: true,
         sound: true,
         autoBackup: true,
+        backupSchedule: 'daily',
+        backupPassword: '',
+        lastBackup: null,
+        lastOptimized: null,
+        lastCleanup: null,
+        // ========== امنیت ==========
+        password: '', // رمز عبور برنامه (خالی یعنی تنظیم نشده)
+        appLockEnabled: false, // قفل برنامه با PIN
       },
 
       // ==================== تاریخچه نوتیفیکیشن‌ها ====================
@@ -213,6 +221,24 @@ const useStore = create(
         settings: { ...state.settings, ...newSettings }
       })),
 
+      resetSettings: () => set((state) => ({
+        settings: {
+          theme: 'dark',
+          language: 'fa',
+          currency: 'IRR',
+          notifications: true,
+          sound: true,
+          autoBackup: true,
+          backupSchedule: 'daily',
+          backupPassword: '',
+          lastBackup: null,
+          lastOptimized: null,
+          lastCleanup: null,
+          password: '',
+          appLockEnabled: false,
+        }
+      })),
+
       // ==================== توابع نوتیفیکیشن ====================
       updateNotificationSettings: (newSettings) => set((state) => ({
         notificationSettings: { ...state.notificationSettings, ...newSettings }
@@ -226,6 +252,16 @@ const useStore = create(
       })),
       
       clearNotificationHistory: () => set({ notificationHistory: [] }),
+      
+      markNotificationAsRead: (id) => set((state) => ({
+        notificationHistory: state.notificationHistory.map(n => 
+          n.id === id ? { ...n, read: true } : n
+        )
+      })),
+      
+      markAllNotificationsAsRead: () => set((state) => ({
+        notificationHistory: state.notificationHistory.map(n => ({ ...n, read: true }))
+      })),
 
       // ==================== توابع پشتیبان‌گیری ====================
       resetAllData: () => set({
@@ -245,18 +281,43 @@ const useStore = create(
         reminders: [],
       }),
 
+      resetSection: (sectionName) => set((state) => ({
+        [sectionName]: []
+      })),
+
       importAllData: (data) => set((state) => ({
         summary: data.summary || state.summary,
-        accounts: data.accounts || state.accounts,
-        assets: data.assets || state.assets,
-        activities: data.activities || state.activities,
-        loans: data.loans || state.loans,
-        subscriptions: data.subscriptions || state.subscriptions,
-        debts: data.debts || state.debts,
-        goals: data.goals || state.goals,
-        reminders: data.reminders || state.reminders,
+        accounts: data.accounts || [],
+        assets: data.assets || [],
+        activities: data.activities || [],
+        loans: data.loans || [],
+        subscriptions: data.subscriptions || [],
+        debts: data.debts || [],
+        goals: data.goals || [],
+        reminders: data.reminders || [],
         settings: data.settings || state.settings,
       })),
+
+      exportAllData: () => {
+        const state = get()
+        return {
+          version: '2.0.0',
+          exportDate: new Date().toISOString(),
+          appName: 'Masterline',
+          data: {
+            summary: state.summary,
+            accounts: state.accounts,
+            assets: state.assets,
+            activities: state.activities,
+            loans: state.loans,
+            subscriptions: state.subscriptions,
+            debts: state.debts,
+            goals: state.goals,
+            reminders: state.reminders,
+            settings: state.settings,
+          }
+        }
+      },
 
       // ==================== توابع مدیریت دیتابیس ====================
       trackDatabaseChange: () => {
@@ -277,6 +338,11 @@ const useStore = create(
       updateAccount: (id, updatedData) => set((state) => ({
         accounts: state.accounts.map(a => a.id === id ? { ...a, ...updatedData } : a)
       })),
+      
+      getTotalBalance: () => {
+        const state = get()
+        return state.accounts.reduce((total, account) => total + account.balance, 0)
+      },
 
       // ==================== توابع مدیریت دارایی‌ها ====================
       addAsset: (asset) => set((state) => ({
@@ -288,6 +354,11 @@ const useStore = create(
       updateAsset: (id, updatedData) => set((state) => ({
         assets: state.assets.map(a => a.id === id ? { ...a, ...updatedData } : a)
       })),
+      
+      getTotalAssetValue: () => {
+        const state = get()
+        return state.assets.reduce((total, asset) => total + (asset.currentPrice || asset.buyPrice || 0) * (asset.amount || 0), 0)
+      },
 
       // ==================== توابع مدیریت فعالیت‌ها ====================
       addActivity: (activity) => set((state) => ({
@@ -299,6 +370,15 @@ const useStore = create(
       updateActivity: (id, updatedData) => set((state) => ({
         activities: state.activities.map(a => a.id === id ? { ...a, ...updatedData } : a)
       })),
+      
+      getTotalPnL: () => {
+        const state = get()
+        return state.activities.reduce((total, activity) => {
+          if (activity.type === 'profit') return total + activity.amount
+          if (activity.type === 'loss') return total - activity.amount
+          return total
+        }, 0)
+      },
 
       // ==================== توابع مدیریت وام‌ها ====================
       addLoan: (loan) => set((state) => ({
@@ -407,9 +487,40 @@ const useStore = create(
       updateSummary: (newData) => set((state) => ({
         summary: { ...state.summary, ...newData }
       })),
+      
+      recalculateSummary: () => {
+        const state = get()
+        const totalBalance = state.accounts.reduce((sum, a) => sum + a.balance, 0)
+        const totalAssetValue = state.assets.reduce((sum, a) => sum + (a.currentPrice || 0) * (a.amount || 0), 0)
+        const totalDebts = state.debts.reduce((sum, d) => sum + d.remainingAmount, 0)
+        const totalLoans = state.loans.reduce((sum, l) => sum + l.remainingAmount, 0)
+        
+        set({
+          summary: {
+            netWorth: totalBalance + totalAssetValue - totalDebts - totalLoans,
+            monthlyPnL: state.getTotalPnL(),
+            totalDebts: totalDebts + totalLoans,
+            totalInvestments: totalAssetValue,
+          }
+        })
+      },
     }),
     {
       name: 'masterline-storage',
+      partialize: (state) => ({
+        settings: state.settings,
+        notificationHistory: state.notificationHistory,
+        notificationSettings: state.notificationSettings,
+        summary: state.summary,
+        accounts: state.accounts,
+        assets: state.assets,
+        activities: state.activities,
+        loans: state.loans,
+        subscriptions: state.subscriptions,
+        debts: state.debts,
+        goals: state.goals,
+        reminders: state.reminders,
+      }),
     }
   )
 )
