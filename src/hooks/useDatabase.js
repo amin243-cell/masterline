@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import useStore from '../store/useStore'
 import {
   getDatabaseStats,
@@ -15,30 +15,23 @@ export function useDatabase() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [lastBackupTime, setLastBackupTime] = useState(null)
+  const [stats, setStats] = useState(getDatabaseStats())
+  const [health, setHealth] = useState(checkDatabaseHealth())
   
   const importAllData = useStore((state) => state.importAllData)
   const settings = useStore((state) => state.settings)
   const updateSettings = useStore((state) => state.updateSettings)
   
-  // دریافت آمار دیتابیس (با useMemo برای جلوگیری از رندر مجدد)
-  const stats = useMemo(() => getDatabaseStats(), [])
-  
-  // بررسی سلامت (با useMemo)
-  const health = useMemo(() => checkDatabaseHealth(), [])
-  
-  // تابع رفرش آمار و سلامت
+  // ==================== تابع رفرش آمار ====================
   const refreshStats = useCallback(() => {
-    // این تابع فقط برای به‌روزرسانی stats و health استفاده می‌شود
-    // در نسخه فعلی، stats و health از useMemo استفاده می‌کنند
-    // برای رفرش، می‌توانیم از forceUpdate استفاده کنیم
-    // اما در اینجا فقط یک callback خالی برمی‌گردانیم
-    return {
-      stats: getDatabaseStats(),
-      health: checkDatabaseHealth(),
-    }
+    const newStats = getDatabaseStats()
+    const newHealth = checkDatabaseHealth()
+    setStats(newStats)
+    setHealth(newHealth)
+    return { stats: newStats, health: newHealth }
   }, [])
   
-  // بهینه‌سازی دیتابیس
+  // ==================== بهینه‌سازی دیتابیس ====================
   const optimize = useCallback(async (options = {}) => {
     setLoading(true)
     setError(null)
@@ -49,12 +42,13 @@ export function useDatabase() {
         compressData: options.compressData !== false,
       })
       
-      // به‌روزرسانی استور
-      useStore.setState(result.optimized)
       trackDatabaseChange()
       
-      // ذخیره زمان بهینه‌سازی در تنظیمات
-      updateSettings({ lastOptimized: new Date().toISOString() })
+      if (updateSettings) {
+        updateSettings({ lastOptimized: new Date().toISOString() })
+      }
+      
+      refreshStats()
       
       return result
     } catch (err) {
@@ -63,23 +57,21 @@ export function useDatabase() {
     } finally {
       setLoading(false)
     }
-  }, [updateSettings])
+  }, [updateSettings, refreshStats])
   
-  // ایجاد Backup با پشتیبانی از مسیر سفارشی
+  // ==================== ایجاد Backup ====================
   const backup = useCallback(async (password = null, options = {}) => {
     setLoading(true)
     setError(null)
     try {
       const result = await createEncryptedBackup(password)
       
-      // اگر مسیر سفارشی داده شده، از آن استفاده کن
       let fileName = options.fileName || `masterline-backup-${new Date().toISOString().split('T')[0]}`
       if (result.encrypted) {
         fileName += '-encrypted'
       }
       fileName += '.json'
       
-      // دانلود فایل
       const blob = new Blob([result.data], { 
         type: 'application/json' 
       })
@@ -92,9 +84,10 @@ export function useDatabase() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       
-      // ذخیره زمان پشتیبان‌گیری
       setLastBackupTime(new Date())
-      updateSettings({ lastBackup: new Date().toISOString() })
+      if (updateSettings) {
+        updateSettings({ lastBackup: new Date().toISOString() })
+      }
       
       trackDatabaseChange()
       
@@ -111,7 +104,7 @@ export function useDatabase() {
     }
   }, [updateSettings])
   
-  // بازیابی Backup با پشتیبانی از رمز و فایل
+  // ==================== بازیابی Backup ====================
   const restore = useCallback(async (file, password = null) => {
     setLoading(true)
     setError(null)
@@ -122,7 +115,6 @@ export function useDatabase() {
       if (password) {
         data = await restoreEncryptedBackup(text, password)
       } else {
-        // بررسی اینکه آیا فایل رمزگذاری شده است
         try {
           const parsed = JSON.parse(text)
           if (parsed.appName === 'Masterline' && parsed.data) {
@@ -131,14 +123,15 @@ export function useDatabase() {
             throw new Error('فایل نامعتبر است')
           }
         } catch (parseErr) {
-          // اگر JSON نبود یا ساختارش درست نبود
           throw new Error('فایل نامعتبر است یا فرمت آن صحیح نیست')
         }
       }
       
-      // وارد کردن داده‌ها
-      importAllData(data)
+      if (importAllData) {
+        importAllData(data)
+      }
       trackDatabaseChange()
+      refreshStats()
       
       return {
         ...data,
@@ -151,19 +144,16 @@ export function useDatabase() {
     } finally {
       setLoading(false)
     }
-  }, [importAllData])
+  }, [importAllData, refreshStats])
   
-  // پاک کردن داده‌های قدیمی
+  // ==================== پاک کردن داده‌های قدیمی ====================
   const cleanOldData = useCallback(async (daysToKeep = 365) => {
     setLoading(true)
     setError(null)
     try {
       const result = await cleanOldData(daysToKeep)
-      
-      // به‌روزرسانی استور
-      useStore.setState(result.cleaned)
       trackDatabaseChange()
-      
+      refreshStats()
       return {
         ...result,
         cleanedAt: new Date().toISOString(),
@@ -174,22 +164,18 @@ export function useDatabase() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [refreshStats])
   
-  // پشتیبان‌گیری خودکار (برای استفاده در پس‌زمینه)
+  // ==================== پشتیبان‌گیری خودکار ====================
   const autoBackupIfNeeded = useCallback(async () => {
     if (!settings?.autoBackup) return null
     
-    // بررسی اینکه آخرین پشتیبان‌گیری کی بوده
     const lastBackup = settings.lastBackup ? new Date(settings.lastBackup) : null
     if (lastBackup) {
       const daysSinceLastBackup = (Date.now() - lastBackup.getTime()) / (1000 * 60 * 60 * 24)
-      
-      // اگر کمتر از یک روز از پشتیبان‌گیری گذشته باشد، نیازی نیست
       if (daysSinceLastBackup < 1) return null
     }
     
-    // انجام پشتیبان‌گیری خودکار
     try {
       const password = settings.backupPassword || null
       const result = await backup(password, { silent: true })
@@ -200,7 +186,7 @@ export function useDatabase() {
     }
   }, [settings, backup])
   
-  // بررسی سلامت دیتابیس با جزئیات بیشتر
+  // ==================== بررسی سلامت ====================
   const getHealthDetails = useCallback(() => {
     const healthCheck = health
     return {
@@ -214,7 +200,7 @@ export function useDatabase() {
     }
   }, [health])
   
-  // دریافت آمار هر بخش به صورت جداگانه
+  // ==================== آمار هر بخش ====================
   const getSectionStats = useCallback((sectionKey) => {
     return stats.sections?.[sectionKey] || {
       count: 0,
@@ -223,30 +209,30 @@ export function useDatabase() {
     }
   }, [stats])
   
-  // دریافت برچسب بخش
-  const getSectionLabel = useCallback((key) => {
+  // ==================== برچسب بخش ====================
+  const getSectionLabelCallback = useCallback((key) => {
     return getSectionLabel(key)
   }, [])
   
+  // ==================== بارگذاری اولیه ====================
+  useEffect(() => {
+    refreshStats()
+  }, [refreshStats])
+  
   return {
-    // داده‌ها
     stats,
     health,
     loading,
     error,
     lastBackupTime,
-    
-    // عملیات‌ها
     optimize,
     backup,
     restore,
     cleanOldData,
     autoBackupIfNeeded,
     refreshStats,
-    
-    // توابع کمکی
     getHealthDetails,
     getSectionStats,
-    getSectionLabel,
+    getSectionLabel: getSectionLabelCallback,
   }
 }

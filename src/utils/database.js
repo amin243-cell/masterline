@@ -1,8 +1,27 @@
-import useStore from '../store/useStore'
+// ==================== توابع کمکی ====================
+export const formatBytes = (bytes) => {
+  if (bytes === 0 || !bytes) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// ==================== دریافت داده از localStorage ====================
+const getDataFromStorage = () => {
+  try {
+    const stored = localStorage.getItem('masterline-storage')
+    if (!stored) return null
+    return JSON.parse(stored)
+  } catch {
+    return null
+  }
+}
 
 // ==================== آمار دیتابیس ====================
 export const getDatabaseStats = () => {
-  const state = useStore.getState()
+  const data = getDataFromStorage()
+  const state = data?.state || {}
   
   const sections = {
     accounts: state.accounts || [],
@@ -15,10 +34,8 @@ export const getDatabaseStats = () => {
     reminders: state.reminders || [],
   }
   
-  // محاسبه حجم localStorage
   const storageSize = new Blob([JSON.stringify(localStorage)]).size
   
-  // محاسبه حجم هر بخش
   const sectionSizes = {}
   let totalRecords = 0
   
@@ -33,11 +50,9 @@ export const getDatabaseStats = () => {
     totalRecords += items.length
   })
   
-  // تاریخ آخرین تغییر (از localStorage)
   const lastModified = localStorage.getItem('masterline-storage-last-modified')
   const firstEntry = localStorage.getItem('masterline-storage-first-entry')
   
-  // محاسبه میانگین حجم هر رکورد
   let averageRecordSize = '0 B'
   if (totalRecords > 0) {
     const avgBytes = storageSize / totalRecords
@@ -58,7 +73,8 @@ export const getDatabaseStats = () => {
 
 // ==================== بررسی سلامت دیتابیس ====================
 export const checkDatabaseHealth = () => {
-  const state = useStore.getState()
+  const data = getDataFromStorage()
+  const state = data?.state || {}
   const issues = []
   const warnings = []
   let lastOptimized = localStorage.getItem('masterline-last-optimized')
@@ -87,7 +103,6 @@ export const checkDatabaseHealth = () => {
     if (!items || items.length === 0) return
     const invalid = items.filter(item => {
       if (!item[dateField]) return false
-      // بررسی فرمت تاریخ شمسی (ساده)
       const str = String(item[dateField])
       const parts = str.split(/[/-]/)
       return parts.length !== 3 || parts.some(p => isNaN(parseInt(p)))
@@ -141,6 +156,13 @@ export const checkDatabaseHealth = () => {
     warnings.push('هیچ‌گاه بهینه‌سازی انجام نشده است')
   }
   
+  const calculateHealthScore = (issues, warnings) => {
+    let score = 100
+    score -= issues.length * 20
+    score -= warnings.length * 5
+    return Math.max(0, Math.min(100, score))
+  }
+  
   return {
     healthy: issues.length === 0,
     issues,
@@ -158,7 +180,8 @@ export const optimizeDatabase = (options = {}) => {
     compressData = true,
   } = options
   
-  const state = useStore.getState()
+  const data = getDataFromStorage()
+  const state = data?.state || {}
   const originalSize = getDatabaseStats().totalSize
   let removedCount = 0
   
@@ -169,10 +192,8 @@ export const optimizeDatabase = (options = {}) => {
     cutoffDate.setMonth(cutoffDate.getMonth() - oldActivityMonths)
     
     optimizedActivities = state.activities.filter(activity => {
-      // اگر تاریخ داشته باشد، بررسی می‌کنیم
       if (activity.date) {
         try {
-          // تبدیل تاریخ شمسی به میلادی (ساده‌شده)
           const parts = activity.date.split('/')
           if (parts.length === 3) {
             const persianDate = new Date(
@@ -183,7 +204,6 @@ export const optimizeDatabase = (options = {}) => {
             return persianDate > cutoffDate
           }
         } catch (e) {
-          // اگر تاریخ نامعتبر بود، نگه می‌داریم
           return true
         }
       }
@@ -193,7 +213,7 @@ export const optimizeDatabase = (options = {}) => {
     removedCount = state.activities.length - optimizedActivities.length
   }
   
-  // فشرده‌سازی: حذف فیلدهای خالی
+  // فشرده‌سازی
   let optimized = { ...state }
   if (compressData) {
     const cleanEmptyFields = (items) => {
@@ -222,8 +242,16 @@ export const optimizeDatabase = (options = {}) => {
     optimized.activities = optimizedActivities
   }
   
-  // ذخیره تاریخ بهینه‌سازی
   localStorage.setItem('masterline-last-optimized', new Date().toISOString())
+  
+  // ذخیره داده‌های بهینه‌سازی شده
+  try {
+    const existing = JSON.parse(localStorage.getItem('masterline-storage') || '{}')
+    existing.state = optimized
+    localStorage.setItem('masterline-storage', JSON.stringify(existing))
+  } catch (e) {
+    console.error('Error saving optimized data:', e)
+  }
   
   const newSize = new Blob([JSON.stringify(optimized)]).size
   
@@ -237,10 +265,12 @@ export const optimizeDatabase = (options = {}) => {
   }
 }
 
-// ==================== Backup با رمز ====================
+// ==================== Backup ====================
 export const createEncryptedBackup = async (password) => {
-  const state = useStore.getState()
-  const data = {
+  const data = getDataFromStorage()
+  const state = data?.state || {}
+  
+  const exportData = {
     version: '2.0.0',
     exportDate: new Date().toISOString(),
     appName: 'Masterline',
@@ -258,10 +288,9 @@ export const createEncryptedBackup = async (password) => {
     },
   }
   
-  const jsonString = JSON.stringify(data)
+  const jsonString = JSON.stringify(exportData)
   
   if (password && password.length >= 8) {
-    // رمزگذاری با Web Crypto API
     try {
       const encrypted = await encryptData(jsonString, password)
       return {
@@ -283,23 +312,20 @@ export const createEncryptedBackup = async (password) => {
   }
 }
 
-// ==================== بازیابی Backup رمزگذاری شده ====================
+// ==================== بازیابی Backup ====================
 export const restoreEncryptedBackup = async (encryptedData, password) => {
   try {
     let decrypted
     
-    // بررسی اینکه آیا داده رمزگذاری شده است یا خیر
     try {
       decrypted = await decryptData(encryptedData, password)
     } catch (err) {
-      // اگر رمزگشایی شکست خورد، ممکن است فایل رمزگذاری نشده باشد
       try {
         const parsed = JSON.parse(encryptedData)
         if (parsed.appName === 'Masterline') {
           return parsed.data
         }
       } catch (e) {
-        // اگر هر دو حالت شکست خورد، خطا بده
         throw new Error('فایل نامعتبر است یا رمز عبور اشتباه است')
       }
       throw new Error('رمز عبور اشتباه است')
@@ -320,12 +346,11 @@ export const restoreEncryptedBackup = async (encryptedData, password) => {
   }
 }
 
-// ==================== توابع رمزگذاری (بهبودیافته) ====================
+// ==================== توابع رمزگذاری ====================
 const encryptData = async (text, password) => {
   const encoder = new TextEncoder()
   const data = encoder.encode(text)
   
-  // تولید کلید از رمز عبور
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
     encoder.encode(password),
@@ -355,13 +380,11 @@ const encryptData = async (text, password) => {
     data
   )
   
-  // ترکیب salt + iv + encrypted
   const result = new Uint8Array(salt.length + iv.length + encrypted.byteLength)
   result.set(salt, 0)
   result.set(iv, salt.length)
   result.set(new Uint8Array(encrypted), salt.length + iv.length)
   
-  // تبدیل به base64
   return btoa(String.fromCharCode(...result))
 }
 
@@ -369,19 +392,16 @@ const decryptData = async (base64Data, password) => {
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
   
-  // تبدیل از base64
   const binaryString = atob(base64Data)
   const bytes = new Uint8Array(binaryString.length)
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i)
   }
   
-  // استخراج salt, iv, encrypted
   const salt = bytes.slice(0, 16)
   const iv = bytes.slice(16, 28)
   const encrypted = bytes.slice(28)
   
-  // تولید کلید
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
     encoder.encode(password),
@@ -412,23 +432,7 @@ const decryptData = async (base64Data, password) => {
   return decoder.decode(decrypted)
 }
 
-// ==================== توابع کمکی ====================
-export const formatBytes = (bytes) => {
-  if (bytes === 0 || !bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-const calculateHealthScore = (issues, warnings) => {
-  let score = 100
-  score -= issues.length * 20
-  score -= warnings.length * 5
-  return Math.max(0, Math.min(100, score))
-}
-
-// ==================== تابع جدید: برچسب بخش‌ها ====================
+// ==================== توابع کمکی دیگر ====================
 export const getSectionLabel = (key) => {
   const labels = {
     accounts: 'حساب‌ها',
@@ -443,7 +447,6 @@ export const getSectionLabel = (key) => {
   return labels[key] || key
 }
 
-// ==================== ثبت تاریخ تغییرات ====================
 export const trackDatabaseChange = () => {
   const now = new Date().toISOString()
   localStorage.setItem('masterline-storage-last-modified', now)
@@ -453,87 +456,15 @@ export const trackDatabaseChange = () => {
   }
 }
 
-// ==================== تابع جدید: ذخیره تنظیمات ====================
-export const saveSettings = async (settings) => {
-  try {
-    // اگر در محیط Tauri هستیم
-    if (window.__TAURI__) {
-      const { writeTextFile, BaseDirectory } = window.__TAURI__.fs
-      await writeTextFile('settings.json', JSON.stringify(settings), {
-        dir: BaseDirectory.AppData,
-      })
-    } else {
-      // در محیط مرورگر
-      localStorage.setItem('masterline-settings', JSON.stringify(settings))
-    }
-    trackDatabaseChange()
-    return true
-  } catch (err) {
-    console.error('خطا در ذخیره تنظیمات:', err)
-    throw new Error('خطا در ذخیره تنظیمات')
-  }
-}
-
-// ==================== تابع جدید: بارگذاری تنظیمات ====================
-export const loadSettings = async () => {
-  try {
-    // اگر در محیط Tauri هستیم
-    if (window.__TAURI__) {
-      const { readTextFile, BaseDirectory } = window.__TAURI__.fs
-      try {
-        const data = await readTextFile('settings.json', {
-          dir: BaseDirectory.AppData,
-        })
-        return JSON.parse(data)
-      } catch {
-        return null
-      }
-    } else {
-      // در محیط مرورگر
-      const data = localStorage.getItem('masterline-settings')
-      return data ? JSON.parse(data) : null
-    }
-  } catch (err) {
-    console.error('خطا در بارگذاری تنظیمات:', err)
-    return null
-  }
-}
-
-// ==================== تابع جدید: پشتیبان‌گیری خودکار ====================
-export const autoBackup = async () => {
-  try {
-    const settings = await loadSettings()
-    if (!settings || !settings.autoBackup) return null
-    
-    const password = settings.backupPassword || null
-    const backup = await createEncryptedBackup(password)
-    
-    // ذخیره در فایل
-    if (window.__TAURI__) {
-      const { writeTextFile, BaseDirectory } = window.__TAURI__.fs
-      const fileName = `backup_${new Date().toISOString().slice(0,10)}.json`
-      await writeTextFile(`backups/${fileName}`, backup.data, {
-        dir: BaseDirectory.Document,
-      })
-    }
-    
-    return backup
-  } catch (err) {
-    console.error('خطا در پشتیبان‌گیری خودکار:', err)
-    return null
-  }
-}
-
-// ==================== تابع جدید: تمیز کردن داده‌های قدیمی ====================
 export const cleanOldData = async (daysToKeep = 365) => {
-  const state = useStore.getState()
+  const data = getDataFromStorage()
+  const state = data?.state || {}
   const cutoffDate = new Date()
   cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
   
   let cleaned = { ...state }
   let removedCount = 0
   
-  // پاک کردن فعالیت‌های قدیمی
   if (state.activities) {
     cleaned.activities = state.activities.filter(activity => {
       if (!activity.date) return true
@@ -553,7 +484,6 @@ export const cleanOldData = async (daysToKeep = 365) => {
     removedCount += state.activities.length - cleaned.activities.length
   }
   
-  // پاک کردن یادآورهای گذشته
   if (state.reminders) {
     cleaned.reminders = state.reminders.filter(reminder => {
       if (!reminder.reminderDate) return true

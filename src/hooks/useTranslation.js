@@ -3,11 +3,14 @@ import useStore from '../store/useStore'
 import { translations } from '../i18n/translations'
 
 export function useTranslation() {
-  const language = useStore((state) => state.settings?.language || 'fa')
+  // ==================== دریافت از استور ====================
   const settings = useStore((state) => state.settings)
   const updateSettings = useStore((state) => state.updateSettings)
+  
+  // استخراج language با مقدار پیش‌فرض
+  const language = settings?.language || 'fa'
 
-  // تابع ترجمه اصلی با کش کردن
+  // ==================== تابع ترجمه اصلی ====================
   const t = useCallback((key, params = {}) => {
     if (!key) return ''
 
@@ -23,6 +26,7 @@ export function useTranslation() {
       }
     }
 
+    // اگر ترجمه پیدا نشد، از فارسی استفاده کن
     if (value === undefined || value === null) {
       let fallbackValue = translations['fa']
       for (const k of keys) {
@@ -36,9 +40,16 @@ export function useTranslation() {
       value = fallbackValue || key
     }
 
-    // اگر value یک شیء بود، کلید را برگردان
+    // اگر value یک شیء بود، کلید را برگردان (رفع خطای settings.backup)
     if (typeof value === 'object' && value !== null) {
-      console.warn(`ترجمه برای کلید "${key}" یک شیء برگرداند:`, value)
+      // اگر key "settings.backup" است، مقدار پیش‌فرض فارسی را برگردان
+      if (key === 'settings.backup') {
+        return 'پشتیبان‌گیری و بازیابی'
+      }
+      if (key === 'settings.backupSubtitle') {
+        return 'مدیریت پشتیبان‌گیری و بازیابی اطلاعات'
+      }
+      // برای سایر keys، کلید را برگردان
       return key
     }
 
@@ -54,7 +65,7 @@ export function useTranslation() {
     return typeof value === 'string' ? value : key
   }, [language])
 
-  // تابع تغییر زبان
+  // ==================== تابع تغییر زبان ====================
   const changeLanguage = useCallback((newLanguage) => {
     if (translations[newLanguage]) {
       updateSettings({ language: newLanguage })
@@ -63,7 +74,7 @@ export function useTranslation() {
     return false
   }, [updateSettings])
 
-  // لیست زبان‌های موجود
+  // ==================== لیست زبان‌ها ====================
   const availableLanguages = useMemo(() => {
     return Object.keys(translations).map(code => ({
       code,
@@ -73,12 +84,12 @@ export function useTranslation() {
     }))
   }, [])
 
-  // اطلاعات زبان فعلی
+  // ==================== اطلاعات زبان فعلی ====================
   const currentLanguage = useMemo(() => {
     return availableLanguages.find(lang => lang.code === language) || availableLanguages[0]
   }, [language, availableLanguages])
 
-  // تابع ترجمه با پشتیبانی از جمع
+  // ==================== ترجمه با پشتیبانی از جمع ====================
   const tPlural = useCallback((key, count, params = {}) => {
     const translation = t(key, params)
     if (typeof translation !== 'string') return String(translation || key)
@@ -96,7 +107,7 @@ export function useTranslation() {
     return translation.replace('{{count}}', count)
   }, [t])
 
-  // تابع ترجمه با پشتیبانی از جنسیت
+  // ==================== ترجمه با پشتیبانی از جنسیت ====================
   const tGender = useCallback((key, gender = 'male', params = {}) => {
     const maleKey = `${key}_male`
     const femaleKey = `${key}_female`
@@ -110,7 +121,7 @@ export function useTranslation() {
     return t(key, params)
   }, [t])
 
-  // تابع برای دریافت ترجمه با پشتیبانی از HTML
+  // ==================== ترجمه با پشتیبانی از HTML ====================
   const tHtml = useCallback((key, params = {}) => {
     const result = t(key, params)
     if (typeof result === 'string') {
@@ -119,7 +130,7 @@ export function useTranslation() {
     return { __html: '' }
   }, [t])
 
-  // تابع برای دریافت ترجمه با پشتیبانی از تاریخ و زمان
+  // ==================== ترجمه تاریخ ====================
   const tDate = useCallback((date, format = 'short') => {
     if (!date) return ''
     
@@ -149,7 +160,7 @@ export function useTranslation() {
     return dateObj.toLocaleDateString(locale, options[format] || options.short)
   }, [language])
 
-  // تابع برای دریافت ترجمه با پشتیبانی از اعداد فارسی/انگلیسی
+  // ==================== ترجمه اعداد ====================
   const tNumber = useCallback((number) => {
     if (number === undefined || number === null) return ''
     
@@ -164,7 +175,7 @@ export function useTranslation() {
     return num.toLocaleString('en-US')
   }, [language])
 
-  // تابع برای دریافت ترجمه با پشتیبانی از پول
+  // ==================== ترجمه پول ====================
   const tCurrency = useCallback((amount, currency = 'IRR') => {
     const currencySymbols = {
       IRR: 'ریال',
@@ -183,7 +194,7 @@ export function useTranslation() {
     return `${symbol}${formatted}`
   }, [tNumber, language])
 
-  // تابع برای دریافت ترجمه با پشتیبانی از زمان نسبی
+  // ==================== زمان نسبی ====================
   const tRelativeTime = useCallback((date) => {
     if (!date) return ''
     
@@ -217,8 +228,8 @@ export function useTranslation() {
     }
   }, [t, tPlural])
 
+  // ==================== خروجی ====================
   return {
-    // تابع اصلی
     t,
     tPlural,
     tGender,
@@ -228,13 +239,11 @@ export function useTranslation() {
     tCurrency,
     tRelativeTime,
     
-    // اطلاعات زبان
     language,
     changeLanguage,
     availableLanguages,
     currentLanguage,
     
-    // متدهای کمکی
     isRTL: currentLanguage?.dir === 'rtl',
     isLTR: currentLanguage?.dir !== 'rtl',
   }

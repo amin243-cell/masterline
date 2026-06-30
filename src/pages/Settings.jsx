@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { 
   Bell, Database, Info, LogOut, 
   Moon, Sun, Globe, Palette, Download, Upload,
@@ -45,7 +45,7 @@ const SmartSuggestions = ({
 }) => {
   const suggestions = []
   
-  if (stats.totalRecords > 10 && !settings.autoBackup) {
+  if (stats?.totalRecords > 10 && !settings?.autoBackup) {
     suggestions.push({
       id: 'auto-backup',
       icon: Shield,
@@ -57,7 +57,7 @@ const SmartSuggestions = ({
     })
   }
   
-  if (stats.storageUsage > 70) {
+  if (stats?.storageUsage > 70) {
     suggestions.push({
       id: 'optimize',
       icon: Zap,
@@ -69,7 +69,7 @@ const SmartSuggestions = ({
     })
   }
   
-  if (settings.notifications && permission !== 'granted') {
+  if (settings?.notifications && permission !== 'granted') {
     suggestions.push({
       id: 'notification-permission',
       icon: Bell,
@@ -81,8 +81,7 @@ const SmartSuggestions = ({
     })
   }
   
-  // پیشنهاد امنیتی
-  if (!settings.password && !settings.appLockEnabled) {
+  if (!settings?.password && !settings?.appLockEnabled) {
     suggestions.push({
       id: 'security',
       icon: Shield,
@@ -159,6 +158,21 @@ export default function Settings() {
   const resetAllData = useStore((state) => state.resetAllData)
   const resetSettings = useStore((state) => state.resetSettings)
   
+  // ============ استفاده از هوک‌ها در سطح بالا ============
+  const database = useDatabase()
+  const { stats, health, loading, error, optimize, backup, restore } = database
+  
+  const notificationsHook = useNotifications()
+  const { 
+    isSupported, 
+    permission, 
+    requestPermission, 
+    testNotification,
+    isGranted,
+    isDenied,
+    isDefault
+  } = notificationsHook
+  
   // ============ State Management ============
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
@@ -183,26 +197,11 @@ export default function Settings() {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   
-  // Password states
   const [backupPassword, setBackupPassword] = useState('')
   const [restorePassword, setRestorePassword] = useState('')
   const [showBackupPassword, setShowBackupPassword] = useState(false)
   const [showRestorePassword, setShowRestorePassword] = useState(false)
   const [useEncryption, setUseEncryption] = useState(false)
-  
-  // Database hook
-  const { stats, health, loading, error, optimize, backup, restore } = useDatabase()
-  
-  // Notifications hook
-  const { 
-    isSupported, 
-    permission, 
-    requestPermission, 
-    testNotification,
-    isGranted,
-    isDenied,
-    isDefault
-  } = useNotifications()
   
   // ============ Effects ============
   useEffect(() => {
@@ -249,7 +248,6 @@ export default function Settings() {
     }
   }, [settings, updateSettings, success, toastError, t])
   
-  // ============ توابع بخش امنیت ============
   const handleChangePassword = useCallback(() => {
     if (newPassword.length < 8) {
       toastError('رمز عبور باید حداقل ۸ کاراکتر باشد')
@@ -260,13 +258,11 @@ export default function Settings() {
       return
     }
     
-    // بررسی رمز فعلی (اگر قبلاً رمز تنظیم شده باشد)
     if (settings.password && currentPassword !== settings.password) {
       toastError('رمز عبور فعلی اشتباه است')
       return
     }
     
-    // ذخیره رمز عبور جدید
     updateSettings({ password: newPassword })
     success('رمز عبور با موفقیت تغییر کرد')
     
@@ -472,51 +468,51 @@ export default function Settings() {
           <CardGrid cols={3} gap={4}>
             <CardStat
               label={t('settings.database.totalSize')}
-              value={stats.totalSizeFormatted}
+              value={stats?.totalSizeFormatted || '0 B'}
               icon={Database}
               variant="primary"
             />
             <CardStat
               label={t('settings.database.totalRecords')}
-              value={stats.totalRecords}
+              value={stats?.totalRecords || 0}
               icon={Activity}
               variant="success"
             />
             <CardStat
               label={t('settings.database.health')}
-              value={`${health.score}%`}
+              value={`${health?.score || 0}%`}
               icon={FileCheck}
-              variant={getHealthColor(health.score)}
-              trend={health.healthy ? 'up' : 'down'}
-              trendLabel={health.healthy ? t('settings.database.healthy') : t('settings.database.unhealthy')}
+              variant={getHealthColor(health?.score || 0)}
+              trend={health?.healthy ? 'up' : 'down'}
+              trendLabel={health?.healthy ? t('settings.database.healthy') : t('settings.database.unhealthy')}
             />
           </CardGrid>
           
-          {showDetailedStats && (
+          {showDetailedStats && stats?.sections && (
             <div className="mt-4 p-4 rounded-xl bg-slate-800/30 border border-slate-700/50">
               <h4 className="text-white font-bold text-sm mb-3">{t('settings.database.details')}</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {Object.entries(stats.sections).map(([key, data]) => (
                   <div key={key} className="p-2 rounded-lg bg-slate-800/50">
                     <p className="text-xs text-slate-400">{getSectionLabel(key)}</p>
-                    <p className="text-sm font-bold text-white">{data.count}</p>
-                    <p className="text-xs text-slate-500">{data.sizeFormatted}</p>
+                    <p className="text-sm font-bold text-white">{data?.count || 0}</p>
+                    <p className="text-xs text-slate-500">{data?.sizeFormatted || '0 B'}</p>
                   </div>
                 ))}
               </div>
             </div>
           )}
           
-          {(health.issues.length > 0 || health.warnings.length > 0) && (
+          {(health?.issues?.length > 0 || health?.warnings?.length > 0) && (
             <div className="mt-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
               <h4 className="text-red-400 font-bold text-sm flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" />
                 {t('settings.database.issues')}
               </h4>
-              {health.issues.map((issue, i) => (
+              {health.issues?.map((issue, i) => (
                 <p key={i} className="text-sm text-red-300 mt-1">• {issue}</p>
               ))}
-              {health.warnings.map((warning, i) => (
+              {health.warnings?.map((warning, i) => (
                 <p key={i} className="text-sm text-amber-300 mt-1">• {warning}</p>
               ))}
             </div>
@@ -550,11 +546,11 @@ export default function Settings() {
         />
         <CardContent className="space-y-3">
           <SwitchItem
-            checked={settings.theme === 'dark'}
+            checked={settings?.theme === 'dark'}
             onCheckedChange={(v) => handleSettingChange('theme', v ? 'dark' : 'light')}
             label={t('settings.theme')}
             description={t('settings.themeDesc')}
-            icon={settings.theme === 'dark' ? Moon : Sun}
+            icon={settings?.theme === 'dark' ? Moon : Sun}
           />
           
           <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/30 border border-slate-700/50">
@@ -567,7 +563,7 @@ export default function Settings() {
                 <p className="text-xs text-slate-400">{t('settings.languageDesc')}</p>
               </div>
             </div>
-            <Select value={settings.language} onValueChange={(v) => handleSettingChange('language', v)}>
+            <Select value={settings?.language || 'fa'} onValueChange={(v) => handleSettingChange('language', v)}>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
@@ -588,7 +584,7 @@ export default function Settings() {
                 <p className="text-xs text-slate-400">{t('settings.currencyDesc')}</p>
               </div>
             </div>
-            <Select value={settings.currency} onValueChange={(v) => handleSettingChange('currency', v)}>
+            <Select value={settings?.currency || 'IRR'} onValueChange={(v) => handleSettingChange('currency', v)}>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
@@ -620,7 +616,7 @@ export default function Settings() {
         <CardContent className="space-y-3">
           <SwitchGroup>
             <SwitchItem
-              checked={settings.notifications}
+              checked={settings?.notifications}
               onCheckedChange={(v) => handleSettingChange('notifications', v)}
               label={t('settings.appNotifications')}
               description={t('settings.appNotificationsDesc')}
@@ -628,15 +624,15 @@ export default function Settings() {
               disabled={!isSupported}
             />
             <SwitchItem
-              checked={settings.sound}
+              checked={settings?.sound}
               onCheckedChange={(v) => handleSettingChange('sound', v)}
               label={t('settings.sound')}
               description={t('settings.soundDesc')}
-              icon={settings.sound ? Volume2 : VolumeX}
-              disabled={!settings.notifications || !isSupported}
+              icon={settings?.sound ? Volume2 : VolumeX}
+              disabled={!settings?.notifications || !isSupported}
             />
             <SwitchItem
-              checked={settings.autoBackup}
+              checked={settings?.autoBackup}
               onCheckedChange={(v) => handleSettingChange('autoBackup', v)}
               label={t('settings.autoBackup')}
               description={t('settings.autoBackupDesc')}
@@ -644,8 +640,7 @@ export default function Settings() {
             />
           </SwitchGroup>
 
-          {/* دکمه تست اعلان‌ها */}
-          {isSupported && settings.notifications && (
+          {isSupported && settings?.notifications && (
             <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/30 border border-slate-700/50">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center">
@@ -671,8 +666,7 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      {/* ============ NOTIFICATION PERMISSION ============ */}
-      {isSupported && settings.notifications && permission !== 'granted' && (
+      {isSupported && settings?.notifications && permission !== 'granted' && (
         <Card variant="warning" className="animate-fade-in-up">
           <CardHeader 
             icon={Shield}
@@ -712,7 +706,6 @@ export default function Settings() {
           iconClassName="text-purple-400"
         />
         <CardContent className="space-y-3">
-          {/* تغییر رمز عبور */}
           <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/30 border border-slate-700/50 hover:border-purple-500/30 transition-all">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center">
@@ -733,7 +726,6 @@ export default function Settings() {
             </Button>
           </div>
 
-          {/* قفل برنامه با PIN */}
           <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/30 border border-slate-700/50 hover:border-purple-500/30 transition-all">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center">
@@ -745,7 +737,7 @@ export default function Settings() {
               </div>
             </div>
             <Switch 
-              checked={settings.appLockEnabled || false}
+              checked={settings?.appLockEnabled || false}
               onCheckedChange={(v) => handleSettingChange('appLockEnabled', v)}
               variant="purple"
             />
@@ -866,7 +858,6 @@ export default function Settings() {
       
       {/* ============ DIALOGS ============ */}
       
-      {/* Reset Dialog */}
       <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
         <DialogContent variant="danger" size="sm">
           <DialogHeader 
@@ -880,10 +871,10 @@ export default function Settings() {
               <p className="text-sm text-red-300">{t('settings.warningResetText')}</p>
               <div className="mt-3 p-3 rounded-lg bg-slate-900/50">
                 <p className="text-xs text-slate-400">
-                  {t('settings.database.totalRecords')}: <span className="text-white font-bold">{stats.totalRecords}</span>
+                  {t('settings.database.totalRecords')}: <span className="text-white font-bold">{stats?.totalRecords || 0}</span>
                 </p>
                 <p className="text-xs text-slate-400">
-                  {t('settings.database.totalSize')}: <span className="text-white font-bold">{stats.totalSizeFormatted}</span>
+                  {t('settings.database.totalSize')}: <span className="text-white font-bold">{stats?.totalSizeFormatted || '0 B'}</span>
                 </p>
               </div>
             </DialogSection>
@@ -897,7 +888,6 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
       
-      {/* Export Dialog */}
       <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
         <DialogContent variant="security" size="md">
           <DialogHeader 
@@ -956,7 +946,6 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
       
-      {/* Backup Password Dialog */}
       <Dialog open={showBackupPasswordDialog} onOpenChange={setShowBackupPasswordDialog}>
         <DialogContent variant="security" size="sm">
           <DialogHeader 
@@ -998,7 +987,6 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
       
-      {/* Optimize Dialog */}
       <Dialog open={showOptimizeDialog} onOpenChange={setShowOptimizeDialog}>
         <DialogContent variant="warning" size="sm">
           <DialogHeader 
@@ -1027,11 +1015,11 @@ export default function Settings() {
             <div className="p-4 rounded-xl bg-slate-800/30 border border-slate-700/50">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">{t('settings.database.totalSize')}</span>
-                <span className="text-white font-bold">{stats.totalSizeFormatted}</span>
+                <span className="text-white font-bold">{stats?.totalSizeFormatted || '0 B'}</span>
               </div>
               <div className="flex justify-between text-sm mt-1">
                 <span className="text-slate-400">{t('settings.database.totalRecords')}</span>
-                <span className="text-white font-bold">{stats.totalRecords}</span>
+                <span className="text-white font-bold">{stats?.totalRecords || 0}</span>
               </div>
             </div>
           </DialogBody>
@@ -1044,7 +1032,6 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
       
-      {/* Exit Dialog */}
       <Dialog open={showExitDialog} onOpenChange={setShowExitDialog}>
         <DialogContent variant="danger" size="sm">
           <DialogHeader 
@@ -1070,7 +1057,6 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
       
-      {/* ============ CHANGE PASSWORD DIALOG ============ */}
       <Dialog open={showChangePasswordDialog} onOpenChange={setShowChangePasswordDialog}>
         <DialogContent variant="security" size="md">
           <DialogHeader 
@@ -1081,8 +1067,7 @@ export default function Settings() {
           />
           <DialogBody>
             <div className="space-y-4">
-              {/* رمز عبور فعلی */}
-              {settings.password && (
+              {settings?.password && (
                 <InputGroup 
                   label="رمز عبور فعلی"
                   required
@@ -1098,7 +1083,6 @@ export default function Settings() {
                 </InputGroup>
               )}
 
-              {/* رمز عبور جدید */}
               <InputGroup 
                 label="رمز عبور جدید"
                 description="حداقل ۸ کاراکتر شامل حروف و اعداد"
@@ -1115,7 +1099,6 @@ export default function Settings() {
                 />
               </InputGroup>
 
-              {/* تکرار رمز عبور */}
               <InputGroup 
                 label="تکرار رمز عبور جدید"
                 required
@@ -1131,9 +1114,8 @@ export default function Settings() {
                 />
               </InputGroup>
 
-              {/* نمایش رمز */}
               <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
-                {settings.password && (
+                {settings?.password && (
                   <button
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                     className="hover:text-white transition-colors"
@@ -1170,7 +1152,7 @@ export default function Settings() {
             primaryLabel="تغییر رمز عبور"
             onPrimary={handleChangePassword}
             primaryDisabled={
-              (settings.password && !currentPassword) || 
+              (settings?.password && !currentPassword) || 
               newPassword.length < 8 || 
               newPassword !== confirmPassword
             }

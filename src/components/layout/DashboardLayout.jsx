@@ -1,4 +1,3 @@
-// src/components/layout/DashboardLayout.jsx
 import { Outlet, NavLink } from 'react-router-dom'
 import { 
   LayoutDashboard, 
@@ -14,7 +13,7 @@ import {
   Menu,
   X
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '../../utils/helpers'
 
 const navigation = [
@@ -32,6 +31,37 @@ const navigation = [
 export default function DashboardLayout({ unreadCount = 0 }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+
+  // مدیریت overflow برای منوی موبایل
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+    } else {
+      document.body.style.overflow = 'unset';
+      document.body.style.position = 'unset';
+      document.body.style.width = 'unset';
+    }
+    
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.body.style.position = 'unset';
+      document.body.style.width = 'unset';
+    };
+  }, [isMobileMenuOpen]);
+
+  // بستن منوی موبایل با کلید Escape
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && isMobileMenuOpen) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isMobileMenuOpen]);
 
   return (
     <div className="flex h-screen bg-slate-950 text-white overflow-hidden">
@@ -54,6 +84,7 @@ export default function DashboardLayout({ unreadCount = 0 }) {
               <button 
                 onClick={() => setIsSidebarOpen(false)}
                 className="text-slate-400 hover:text-white transition-colors"
+                aria-label="بستن سایدبار"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -62,6 +93,7 @@ export default function DashboardLayout({ unreadCount = 0 }) {
             <button 
               onClick={() => setIsSidebarOpen(true)}
               className="text-slate-400 hover:text-white transition-colors"
+              aria-label="باز کردن سایدبار"
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -79,7 +111,7 @@ export default function DashboardLayout({ unreadCount = 0 }) {
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) => cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 relative",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 relative group",
                   isActive 
                     ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" 
                     : "text-slate-400 hover:bg-slate-800 hover:text-white",
@@ -120,6 +152,7 @@ export default function DashboardLayout({ unreadCount = 0 }) {
               "flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200",
               !isSidebarOpen && "justify-center"
             )}
+            aria-label="خروج از برنامه"
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
             {isSidebarOpen && <span className="text-sm font-medium">خروج</span>}
@@ -135,10 +168,11 @@ export default function DashboardLayout({ unreadCount = 0 }) {
           <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="text-slate-400 hover:text-white transition-colors relative"
+            aria-label={isMobileMenuOpen ? "بستن منو" : "باز کردن منو"}
           >
-            <Menu className="w-6 h-6" />
+            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             {/* نشانگر تعداد اعلان‌ها در هدر موبایل */}
-            {unreadCount > 0 && (
+            {!isMobileMenuOpen && unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
@@ -146,15 +180,21 @@ export default function DashboardLayout({ unreadCount = 0 }) {
           </button>
         </header>
 
-        {/* منوی موبایل */}
+        {/* منوی موبایل - با بهبود دسترسی‌پذیری */}
         {isMobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md">
+          <div 
+            className="md:hidden fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            aria-label="منوی موبایل"
+          >
             <div className="flex flex-col h-full p-4">
               <div className="flex items-center justify-between mb-6">
                 <span className="text-xl font-black text-gradient-ultra">Masterline</span>
                 <button 
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="text-slate-400 hover:text-white transition-colors"
+                  aria-label="بستن منو"
                 >
                   <X className="w-6 h-6" />
                 </button>
