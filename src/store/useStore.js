@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { getPersianDate } from '../lib/helpers'
 
 const useStore = create(
   persist(
@@ -22,17 +23,21 @@ const useStore = create(
         appLockEnabled: false, // قفل برنامه با PIN
       },
 
-      // ==================== تاریخچه نوتیفیکیشن‌ها ====================
-      notificationHistory: [],
-      
-      // ==================== تنظیمات نوتیفیکیشن ====================
+      // ==================== داده‌های اعلان‌ها (از دیتابیس می‌آیند) ====================
+      notifications: [],
       notificationSettings: {
-        loans: { enabled: true, beforeDays: [3, 1, 0] },
-        subscriptions: { enabled: true, beforeDays: [7, 3, 0] },
-        goals: { enabled: true, milestones: [25, 50, 75, 100] },
-        reminders: { enabled: true, beforeMinutes: [60, 30, 0] },
-        doNotDisturb: { enabled: false, start: '23:00', end: '08:00' },
+        loan_days: '3,1,0',
+        subscription_days: '7,3,0',
+        goal_percent: '25,50,75,100',
+        general_minutes: '60,30,0',
+        dnd_enabled: false,
+        dnd_start: '23:00',
+        dnd_end: '08:00'
       },
+      unreadCount: 0,
+
+      // ==================== تاریخچه تغییرات اهداف ====================
+      goalHistory: [],
 
       // ==================== خلاصه وضعیت مالی ====================
       summary: {
@@ -164,7 +169,10 @@ const useStore = create(
           currentAmount: 450000000, 
           deadline: '1405/06/01',
           priority: 'high',
-          note: 'پیش‌پرداخت خانه' 
+          note: 'پیش‌پرداخت خانه',
+          repeat: 'none',
+          lastReset: null,
+          createdAt: new Date().toISOString()
         },
         { 
           id: 2, 
@@ -174,7 +182,10 @@ const useStore = create(
           currentAmount: 75000000, 
           deadline: '1403/12/01',
           priority: 'high',
-          note: '۶ ماه هزینه زندگی' 
+          note: '۶ ماه هزینه زندگی',
+          repeat: 'none',
+          lastReset: null,
+          createdAt: new Date().toISOString()
         },
         { 
           id: 3, 
@@ -184,7 +195,10 @@ const useStore = create(
           currentAmount: 24856, 
           deadline: '1404/06/01',
           priority: 'medium',
-          note: 'هدف سرمایه‌گذاری' 
+          note: 'هدف سرمایه‌گذاری',
+          repeat: 'none',
+          lastReset: null,
+          createdAt: new Date().toISOString()
         },
       ],
 
@@ -240,28 +254,63 @@ const useStore = create(
       })),
 
       // ==================== توابع نوتیفیکیشن ====================
-      updateNotificationSettings: (newSettings) => set((state) => ({
-        notificationSettings: { ...state.notificationSettings, ...newSettings }
-      })),
+      setNotifications: (notifications) => set({ notifications }),
+      setNotificationSettings: (settings) => set({ notificationSettings: settings }),
+      setUnreadCount: (count) => set({ unreadCount: count }),
+      setSettings: (settings) => set({ notificationSettings: settings }),
+
+      updateNotificationSettings: (newSettings) => {
+        set((state) => ({
+          notificationSettings: { ...state.notificationSettings, ...newSettings }
+        }));
+      },
       
-      addNotificationToHistory: (notification) => set((state) => ({
-        notificationHistory: [
-          { ...notification, id: Date.now(), timestamp: new Date().toISOString(), read: false },
-          ...state.notificationHistory
-        ].slice(0, 100)
-      })),
+      addNotificationToHistory: (notification) => {
+        set((state) => ({
+          notifications: [
+            { ...notification, id: Date.now(), timestamp: new Date().toISOString(), read: false },
+            ...state.notifications
+          ].slice(0, 100)
+        }));
+      },
       
-      clearNotificationHistory: () => set({ notificationHistory: [] }),
+      clearNotificationHistory: () => set({ notifications: [] }),
       
       markNotificationAsRead: (id) => set((state) => ({
-        notificationHistory: state.notificationHistory.map(n => 
+        notifications: state.notifications.map(n => 
           n.id === id ? { ...n, read: true } : n
         )
       })),
       
       markAllNotificationsAsRead: () => set((state) => ({
-        notificationHistory: state.notificationHistory.map(n => ({ ...n, read: true }))
+        notifications: state.notifications.map(n => ({ ...n, read: true }))
       })),
+
+      // ==================== توابع تاریخچه اهداف ====================
+      addGoalHistory: (goalId, action, details) => {
+        const newEntry = {
+          id: Date.now(),
+          goalId,
+          action, // 'created', 'updated', 'progress', 'completed', 'reset'
+          details,
+          timestamp: new Date().toISOString(),
+          date: getPersianDate(),
+        }
+        set((state) => ({
+          goalHistory: [newEntry, ...state.goalHistory].slice(0, 100)
+        }))
+      },
+
+      clearGoalHistory: (goalId) => {
+        set((state) => ({
+          goalHistory: state.goalHistory.filter(h => h.goalId !== goalId)
+        }))
+      },
+
+      getGoalHistory: (goalId) => {
+        const state = get()
+        return state.goalHistory.filter(h => h.goalId === goalId)
+      },
 
       // ==================== توابع پشتیبان‌گیری ====================
       resetAllData: () => set({
@@ -279,6 +328,9 @@ const useStore = create(
         debts: [],
         goals: [],
         reminders: [],
+        notifications: [],
+        goalHistory: [],
+        unreadCount: 0,
       }),
 
       resetSection: (sectionName) => set((state) => ({
@@ -295,6 +347,8 @@ const useStore = create(
         debts: data.debts || [],
         goals: data.goals || [],
         reminders: data.reminders || [],
+        notifications: data.notifications || [],
+        goalHistory: data.goalHistory || [],
         settings: data.settings || state.settings,
       })),
 
@@ -314,6 +368,8 @@ const useStore = create(
             debts: state.debts,
             goals: state.goals,
             reminders: state.reminders,
+            notifications: state.notifications,
+            goalHistory: state.goalHistory,
             settings: state.settings,
           }
         }
@@ -381,9 +437,11 @@ const useStore = create(
       },
 
       // ==================== توابع مدیریت وام‌ها ====================
-      addLoan: (loan) => set((state) => ({
-        loans: [...state.loans, { ...loan, id: Date.now() }]
-      })),
+      addLoan: (loan) => {
+        set((state) => ({
+          loans: [...state.loans, { ...loan, id: Date.now() }]
+        }))
+      },
       deleteLoan: (id) => set((state) => ({
         loans: state.loans.filter(l => l.id !== id)
       })),
@@ -450,28 +508,100 @@ const useStore = create(
       })),
 
       // ==================== توابع مدیریت اهداف ====================
-      addGoal: (goal) => set((state) => ({
-        goals: [...state.goals, { ...goal, id: Date.now() }]
-      })),
-      deleteGoal: (id) => set((state) => ({
-        goals: state.goals.filter(g => g.id !== id)
-      })),
-      updateGoal: (id, updatedData) => set((state) => ({
-        goals: state.goals.map(g => g.id === id ? { ...g, ...updatedData } : g)
-      })),
-      addToGoal: (goalId, amount) => set((state) => ({
-        goals: state.goals.map(g => {
-          if (g.id === goalId) {
-            const newAmount = Math.min(g.targetAmount, g.currentAmount + amount)
-            return {
-              ...g,
-              currentAmount: newAmount,
-              status: newAmount >= g.targetAmount ? 'completed' : 'in-progress'
-            }
-          }
-          return g
+      addGoal: (goal) => {
+        const newGoal = { 
+          ...goal, 
+          id: Date.now(),
+          status: 'in-progress',
+          repeat: goal.repeat || 'none',
+          lastReset: null,
+          createdAt: new Date().toISOString()
+        }
+        set((state) => ({
+          goals: [...state.goals, newGoal]
+        }))
+        // ثبت در تاریخچه
+        get().addGoalHistory(newGoal.id, 'created', { 
+          title: newGoal.title, 
+          targetAmount: newGoal.targetAmount 
         })
-      })),
+        return newGoal.id
+      },
+
+      deleteGoal: (id) => {
+        set((state) => ({
+          goals: state.goals.filter(g => g.id !== id)
+        }))
+        // پاک کردن تاریخچه مرتبط
+        get().clearGoalHistory(id)
+      },
+
+      updateGoal: (id, updatedData) => {
+        set((state) => ({
+          goals: state.goals.map(g => {
+            if (g.id === id) {
+              const oldGoal = { ...g }
+              const newGoal = { ...g, ...updatedData }
+              // ثبت در تاریخچه
+              const changes = []
+              if (oldGoal.targetAmount !== newGoal.targetAmount) {
+                changes.push(`مبلغ هدف از ${oldGoal.targetAmount} به ${newGoal.targetAmount} تغییر کرد`)
+              }
+              if (oldGoal.deadline !== newGoal.deadline) {
+                changes.push(`مهلت هدف از ${oldGoal.deadline || 'نامشخص'} به ${newGoal.deadline || 'نامشخص'} تغییر کرد`)
+              }
+              if (oldGoal.priority !== newGoal.priority) {
+                changes.push(`اولویت از ${oldGoal.priority} به ${newGoal.priority} تغییر کرد`)
+              }
+              if (changes.length > 0) {
+                get().addGoalHistory(id, 'updated', { changes: changes.join('، ') })
+              }
+              return newGoal
+            }
+            return g
+          })
+        }))
+      },
+
+      addToGoal: (goalId, amount) => {
+        set((state) => {
+          const goal = state.goals.find(g => g.id === goalId)
+          if (!goal) return state
+          
+          const newAmount = Math.min(goal.targetAmount, goal.currentAmount + amount)
+          const wasCompleted = goal.currentAmount >= goal.targetAmount
+          const isNowCompleted = newAmount >= goal.targetAmount
+          
+          // ثبت در تاریخچه
+          get().addGoalHistory(goalId, 'progress', { 
+            amount, 
+            newAmount,
+            targetAmount: goal.targetAmount,
+            progress: (newAmount / goal.targetAmount) * 100
+          })
+          
+          // اگر کامل شده باشد
+          if (!wasCompleted && isNowCompleted) {
+            get().addGoalHistory(goalId, 'completed', { 
+              title: goal.title,
+              targetAmount: goal.targetAmount
+            })
+          }
+          
+          return {
+            goals: state.goals.map(g => {
+              if (g.id === goalId) {
+                return {
+                  ...g,
+                  currentAmount: newAmount,
+                  status: newAmount >= g.targetAmount ? 'completed' : 'in-progress'
+                }
+              }
+              return g
+            })
+          }
+        })
+      },
 
       // ==================== توابع مدیریت یادآورها ====================
       addReminder: (reminder) => set((state) => ({
@@ -509,8 +639,6 @@ const useStore = create(
       name: 'masterline-storage',
       partialize: (state) => ({
         settings: state.settings,
-        notificationHistory: state.notificationHistory,
-        notificationSettings: state.notificationSettings,
         summary: state.summary,
         accounts: state.accounts,
         assets: state.assets,
@@ -520,6 +648,8 @@ const useStore = create(
         debts: state.debts,
         goals: state.goals,
         reminders: state.reminders,
+        goalHistory: state.goalHistory, // اضافه شد
+        // notifications و notificationSettings در دیتابیس SQLite ذخیره می‌شوند
       }),
     }
   )

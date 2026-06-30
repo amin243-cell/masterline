@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { 
   CreditCard, Wallet, TrendingDown, Plus, Search, Edit3, Trash2, 
   CheckCircle2, ChevronDown, ChevronUp, User,
-  Building2, Bell
+  Building2, Bell, BellRing, BellOff
 } from 'lucide-react'
 import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -21,6 +21,7 @@ import {
 import useStore from '../store/useStore'
 import { formatNumber, getPersianDate } from '../lib/helpers'
 import Toast from '../components/ui/toast'
+import { useNotifications } from '../hooks/useNotifications'
 
 const SUBSCRIPTION_CYCLES = [
   { value: 'monthly', label: 'ماهانه' },
@@ -36,6 +37,8 @@ export default function Loans() {
     addSubscription, deleteSubscription, updateSubscription,
     addDebt, deleteDebt, updateDebt, payDebt
   } = useStore()
+  
+  const { sendNotification, settings } = useNotifications()
   
   const [activeTab, setActiveTab] = useState('loans')
   const [searchQuery, setSearchQuery] = useState('')
@@ -54,6 +57,92 @@ export default function Loans() {
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type })
+  }
+
+  // ==================== توابع تنظیم یادآور وام ====================
+  const setupLoanReminder = async (loan) => {
+    try {
+      // محاسبه روزهای قبل از سررسید
+      const endDate = new Date(loan.endDate)
+      const now = new Date()
+      const daysUntilDue = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24))
+      
+      // دریافت تنظیمات یادآور وام از دیتابیس
+      const loanSettings = settings?.loan_days?.split(',').map(Number) || [3, 1, 0]
+      
+      // بررسی آیا امروز یکی از روزهای یادآوری است
+      if (!loanSettings.includes(daysUntilDue)) {
+        showToast(`یادآور وام "${loan.name}" برای ${daysUntilDue} روز قبل از سررسید تنظیم شد`, 'success')
+      }
+      
+      // ارسال اعلان تست
+      await sendNotification(
+        `🔔 یادآور وام: ${loan.name}`,
+        `وام "${loan.name}" ${daysUntilDue === 0 ? 'امروز' : `${daysUntilDue} روز دیگر`} سررسید می‌شود. مبلغ قسط: ${formatNumber(loan.monthlyPayment)} ریال`,
+        'loan',
+        loan.id,
+        'loan',
+        loan.endDate
+      )
+      
+      showToast(`یادآور برای وام "${loan.name}" تنظیم شد`, 'success')
+    } catch (err) {
+      console.error('Error setting loan reminder:', err)
+      showToast('خطا در تنظیم یادآور وام', 'error')
+    }
+  }
+
+  // ==================== توابع تنظیم یادآور اشتراک ====================
+  const setupSubscriptionReminder = async (subscription) => {
+    try {
+      // محاسبه روزهای قبل از تمدید
+      const renewalDate = new Date(subscription.nextRenewal)
+      const now = new Date()
+      const daysUntilRenewal = Math.ceil((renewalDate - now) / (1000 * 60 * 60 * 24))
+      
+      // ارسال اعلان تست
+      await sendNotification(
+        `🔔 یادآور اشتراک: ${subscription.name}`,
+        `اشتراک "${subscription.name}" ${daysUntilRenewal === 0 ? 'امروز' : `${daysUntilRenewal} روز دیگر`} تمدید می‌شود. مبلغ: ${formatNumber(subscription.amount)} ${subscription.currency}`,
+        'subscription',
+        subscription.id,
+        'subscription',
+        subscription.nextRenewal
+      )
+      
+      showToast(`یادآور برای اشتراک "${subscription.name}" تنظیم شد`, 'success')
+    } catch (err) {
+      console.error('Error setting subscription reminder:', err)
+      showToast('خطا در تنظیم یادآور اشتراک', 'error')
+    }
+  }
+
+  // ==================== توابع تنظیم یادآور بدهی ====================
+  const setupDebtReminder = async (debt) => {
+    try {
+      if (!debt.dueDate) {
+        showToast('برای تنظیم یادآور، تاریخ سررسید را وارد کنید', 'error')
+        return
+      }
+      
+      const dueDate = new Date(debt.dueDate)
+      const now = new Date()
+      const daysUntilDue = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24))
+      
+      await sendNotification(
+        `🔔 یادآور بدهی: ${debt.name}`,
+        `بدهی "${debt.name}" به ${debt.personName || 'طرف حساب'} ${daysUntilDue === 0 ? 'امروز' : `${daysUntilDue} روز دیگر`} سررسید می‌شود. مبلغ: ${formatNumber(debt.remainingAmount)} ریال`,
+        'general',
+        debt.id,
+        'debt',
+        debt.dueDate
+      )
+      
+      showToast(`یادآور برای بدهی "${debt.name}" تنظیم شد`, 'success')
+    } catch (err) {
+      console.error('Error setting debt reminder:', err)
+      showToast('خطا در تنظیم یادآور بدهی', 'error')
+    }
   }
 
   const openAddLoan = () => {
@@ -82,7 +171,7 @@ export default function Loans() {
     setShowDialog(true)
   }
 
-  const saveLoan = () => {
+  const saveLoan = async () => {
     if (!formData.name || !formData.totalAmount || !formData.monthlyPayment) {
       showToast('لطفاً فیلدهای ضروری را پر کنید', 'error')
       return
@@ -101,12 +190,30 @@ export default function Loans() {
       status: 'active',
       note: formData.note
     }
+    
+    let savedItem
     if (editingItem?.id) {
       updateLoan(editingItem.id, data)
+      savedItem = { ...data, id: editingItem.id }
       showToast('وام با موفقیت ویرایش شد')
     } else {
-      addLoan(data)
+      const newId = addLoan(data)
+      savedItem = { ...data, id: newId }
       showToast('وام جدید با موفقیت اضافه شد')
+      
+      // ارسال اعلان برای وام جدید
+      try {
+        await sendNotification(
+          '✅ وام جدید ثبت شد',
+          `وام "${data.name}" به مبلغ ${formatNumber(data.totalAmount)} ریال ثبت شد`,
+          'loan',
+          newId,
+          'loan',
+          data.endDate
+        )
+      } catch (err) {
+        console.error('Error sending notification for new loan:', err)
+      }
     }
     setShowDialog(false)
   }
@@ -117,13 +224,40 @@ export default function Loans() {
     setShowPaymentDialog(true)
   }
 
-  const confirmPayLoan = () => {
+  const confirmPayLoan = async () => {
     if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
       showToast('مبلغ نامعتبر است', 'error')
       return
     }
     payLoanInstallment(paymentItem.id, parseFloat(paymentAmount))
     showToast(`قسط ${formatNumber(parseFloat(paymentAmount))} ریال با موفقیت پرداخت شد`)
+    
+    // ارسال اعلان پس از پرداخت
+    try {
+      const remainingAmount = paymentItem.remainingAmount - parseFloat(paymentAmount)
+      if (remainingAmount <= 0) {
+        await sendNotification(
+          '✅ وام تسویه شد',
+          `وام "${paymentItem.name}" به طور کامل تسویه شد`,
+          'loan',
+          paymentItem.id,
+          'loan',
+          null
+        )
+      } else {
+        await sendNotification(
+          '💰 پرداخت قسط وام',
+          `قسط وام "${paymentItem.name}" به مبلغ ${formatNumber(parseFloat(paymentAmount))} ریال پرداخت شد. مانده باقی‌مانده: ${formatNumber(remainingAmount)} ریال`,
+          'loan',
+          paymentItem.id,
+          'loan',
+          null
+        )
+      }
+    } catch (err) {
+      console.error('Error sending payment notification:', err)
+    }
+    
     setShowPaymentDialog(false)
     setPaymentItem(null)
   }
@@ -150,7 +284,7 @@ export default function Loans() {
     setShowDialog(true)
   }
 
-  const saveSubscription = () => {
+  const saveSubscription = async () => {
     if (!formData.name || !formData.amount) {
       showToast('لطفاً فیلدهای ضروری را پر کنید', 'error')
       return
@@ -166,12 +300,30 @@ export default function Loans() {
       status: formData.status || 'active',
       note: formData.note
     }
+    
+    let savedItem
     if (editingItem?.id) {
       updateSubscription(editingItem.id, data)
+      savedItem = { ...data, id: editingItem.id }
       showToast('اشتراک با موفقیت ویرایش شد')
     } else {
-      addSubscription(data)
+      const newId = addSubscription(data)
+      savedItem = { ...data, id: newId }
       showToast('اشتراک جدید با موفقیت اضافه شد')
+      
+      // ارسال اعلان برای اشتراک جدید
+      try {
+        await sendNotification(
+          '✅ اشتراک جدید ثبت شد',
+          `اشتراک "${data.name}" با مبلغ ${formatNumber(data.amount)} ${data.currency} ثبت شد`,
+          'subscription',
+          newId,
+          'subscription',
+          data.nextRenewal
+        )
+      } catch (err) {
+        console.error('Error sending notification for new subscription:', err)
+      }
     }
     setShowDialog(false)
   }
@@ -197,7 +349,7 @@ export default function Loans() {
     setShowDialog(true)
   }
 
-  const saveDebt = () => {
+  const saveDebt = async () => {
     if (!formData.name || !formData.totalAmount) {
       showToast('لطفاً فیلدهای ضروری را پر کنید', 'error')
       return
@@ -212,12 +364,30 @@ export default function Loans() {
       status: 'active',
       note: formData.note
     }
+    
+    let savedItem
     if (editingItem?.id) {
       updateDebt(editingItem.id, data)
+      savedItem = { ...data, id: editingItem.id }
       showToast('بدهی با موفقیت ویرایش شد')
     } else {
-      addDebt(data)
+      const newId = addDebt(data)
+      savedItem = { ...data, id: newId }
       showToast('بدهی جدید با موفقیت اضافه شد')
+      
+      // ارسال اعلان برای بدهی جدید
+      try {
+        await sendNotification(
+          '✅ بدهی جدید ثبت شد',
+          `بدهی "${data.name}" به مبلغ ${formatNumber(data.totalAmount)} ریال ثبت شد`,
+          'general',
+          newId,
+          'debt',
+          data.dueDate
+        )
+      } catch (err) {
+        console.error('Error sending notification for new debt:', err)
+      }
     }
     setShowDialog(false)
   }
@@ -228,13 +398,40 @@ export default function Loans() {
     setShowPaymentDialog(true)
   }
 
-  const confirmPayDebt = () => {
+  const confirmPayDebt = async () => {
     if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
       showToast('مبلغ نامعتبر است', 'error')
       return
     }
     payDebt(paymentItem.id, parseFloat(paymentAmount))
     showToast(`مبلغ ${formatNumber(parseFloat(paymentAmount))} ریال با موفقیت پرداخت شد`)
+    
+    // ارسال اعلان پس از پرداخت
+    try {
+      const remainingAmount = paymentItem.remainingAmount - parseFloat(paymentAmount)
+      if (remainingAmount <= 0) {
+        await sendNotification(
+          '✅ بدهی تسویه شد',
+          `بدهی "${paymentItem.name}" به طور کامل تسویه شد`,
+          'general',
+          paymentItem.id,
+          'debt',
+          null
+        )
+      } else {
+        await sendNotification(
+          '💰 پرداخت بدهی',
+          `مبلغ ${formatNumber(parseFloat(paymentAmount))} ریال از بدهی "${paymentItem.name}" پرداخت شد. مانده باقی‌مانده: ${formatNumber(remainingAmount)} ریال`,
+          'general',
+          paymentItem.id,
+          'debt',
+          null
+        )
+      }
+    } catch (err) {
+      console.error('Error sending payment notification:', err)
+    }
+    
     setShowPaymentDialog(false)
     setPaymentItem(null)
   }
@@ -439,16 +636,26 @@ export default function Loans() {
 
                       {loan.note && <p className="text-xs text-slate-500">📝 {loan.note}</p>}
 
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex gap-3 pt-2 flex-wrap">
                         {!isPaid && (
-                          <Button 
-                            onClick={() => openPayLoan(loan)}
-                            className="btn-ultra btn-ultra-primary flex-1"
-                            size="sm"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                            پرداخت قسط
-                          </Button>
+                          <>
+                            <Button 
+                              onClick={() => openPayLoan(loan)}
+                              className="btn-ultra btn-ultra-primary flex-1"
+                              size="sm"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              پرداخت قسط
+                            </Button>
+                            <Button 
+                              onClick={() => setupLoanReminder(loan)}
+                              className="btn-ultra btn-ultra-secondary"
+                              size="sm"
+                            >
+                              <BellRing className="w-4 h-4" />
+                              تنظیم یادآور
+                            </Button>
+                          </>
                         )}
                         <Button 
                           onClick={() => openEditLoan(loan)}
@@ -537,7 +744,17 @@ export default function Loans() {
 
                       {sub.note && <p className="text-xs text-slate-500">📝 {sub.note}</p>}
 
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex gap-3 pt-2 flex-wrap">
+                        {sub.status === 'active' && (
+                          <Button 
+                            onClick={() => setupSubscriptionReminder(sub)}
+                            className="btn-ultra btn-ultra-secondary"
+                            size="sm"
+                          >
+                            <BellRing className="w-4 h-4" />
+                            تنظیم یادآور
+                          </Button>
+                        )}
                         <Button 
                           onClick={() => openEditSubscription(sub)}
                           className="btn-ultra btn-ultra-secondary"
@@ -633,16 +850,28 @@ export default function Loans() {
 
                       {debt.note && <p className="text-xs text-slate-500">📝 {debt.note}</p>}
 
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex gap-3 pt-2 flex-wrap">
                         {!isPaid && (
-                          <Button 
-                            onClick={() => openPayDebt(debt)}
-                            className="btn-ultra btn-ultra-primary flex-1"
-                            size="sm"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                            ثبت پرداخت
-                          </Button>
+                          <>
+                            <Button 
+                              onClick={() => openPayDebt(debt)}
+                              className="btn-ultra btn-ultra-primary flex-1"
+                              size="sm"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              ثبت پرداخت
+                            </Button>
+                            {debt.dueDate && (
+                              <Button 
+                                onClick={() => setupDebtReminder(debt)}
+                                className="btn-ultra btn-ultra-secondary"
+                                size="sm"
+                              >
+                                <BellRing className="w-4 h-4" />
+                                تنظیم یادآور
+                              </Button>
+                            )}
+                          </>
                         )}
                         <Button 
                           onClick={() => openEditDebt(debt)}

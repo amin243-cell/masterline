@@ -10,13 +10,22 @@ import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
 import Notifications from './pages/Notifications'
 import NotificationPermissionHandler from './components/NotificationPermissionHandler'
+import { useNotifications } from './hooks/useNotifications'
+import { useEffect } from 'react'
 
 function App() {
+  const { unreadCount, fetchNotifications } = useNotifications()
+  
+  // بارگذاری اولیه اعلان‌ها
+  useEffect(() => {
+    fetchNotifications()
+  }, [fetchNotifications])
+
   return (
     <>
       <NotificationPermissionHandler />
       <Routes>
-        <Route path="/" element={<DashboardLayout />}>
+        <Route path="/" element={<DashboardLayout unreadCount={unreadCount} />}>
           <Route index element={<Dashboard />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="trading" element={<Trading />} />
