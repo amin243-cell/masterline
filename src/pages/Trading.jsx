@@ -1,5 +1,10 @@
-import { useState, useMemo } from 'react'
-import { TrendingUp, TrendingDown, ArrowUpCircle, ArrowDownCircle, PlusCircle, Clock, FileText, Trash2, Edit3, Check, X, Inbox, Search, Target, Percent, DollarSign, Wallet } from 'lucide-react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { 
+  TrendingUp, TrendingDown, ArrowUpCircle, ArrowDownCircle, 
+  PlusCircle, Clock, FileText, Trash2, Edit3, Check, X, 
+  Inbox, Search, Target, Percent, DollarSign, Wallet, 
+  RefreshCw, Download, BarChart3, Calendar
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -13,19 +18,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog'
-import useStore from '../store/useStore'
 import { getPersianDate, formatNumber, parseNumber } from '../lib/helpers'
-import useConfirm from '../hooks/useConfirm'
-import useAlert from '../hooks/useAlert'
-import useDebounce from '../hooks/useDebounce'
-import FormField from '../components/ui/FormField'
-import LoadingButton from '../components/ui/LoadingButton'
-import EmptyState from '../components/ui/EmptyState'
+import { cn } from '../lib/utils'
+import { toast } from 'sonner'
 
+// ==================== تابع invoke ====================
+const getInvoke = () => {
+  if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+    return window.__TAURI_INTERNALS__.invoke
+  }
+  if (window.__TAURI__?.core?.invoke) {
+    return window.__TAURI__.core.invoke
+  }
+  if (window.__TAURI_INVOKE__) {
+    return window.__TAURI_INVOKE__
+  }
+  throw new Error('Tauri API not available. Make sure you are running with `npx tauri dev`')
+}
+
+// ==================== کامپوننت اصلی ====================
 export default function Trading() {
-  const { accounts, activities, addActivity, deleteActivity, updateActivity } = useStore()
-  
-  const tradingAccounts = accounts.filter(a => a.category === 'trading')
+  // ==================== State ====================
+  const [accounts, setAccounts] = useState([])
+  const [activities, setActivities] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   
   const [type, setType] = useState('profit')
   const [accountId, setAccountId] = useState('')
@@ -35,17 +52,39 @@ export default function Trading() {
   
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
   
   const [searchQuery, setSearchQuery] = useState('')
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
+  const [filterType, setFilterType] = useState('all')
+  const [filterAccount, setFilterAccount] = useState('all')
   
   const [formErrors, setFormErrors] = useState({})
 
-  const { confirm, ConfirmComponent } = useConfirm()
-  const { alert, AlertComponent } = useAlert()
+  const tradingAccounts = accounts.filter(a => a.category === 'trading')
 
-  // ==================== آمار زنده ترید ====================
+  // ==================== دریافت داده از دیتابیس ====================
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const invoke = getInvoke()
+      const [accountsData, activitiesData] = await Promise.all([
+        invoke('get_accounts'),
+        invoke('get_activities'),
+      ])
+      setAccounts(accountsData || [])
+      setActivities(activitiesData || [])
+    } catch (error) {
+      console.error('Error fetching data:', error)
+      toast.error('خطا در دریافت داده‌ها')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  // ==================== آمار ====================
   const tradeStats = useMemo(() => {
     const trades = activities.filter(a => a.type === 'profit' || a.type === 'loss')
     const profits = trades.filter(a => a.type === 'profit')
@@ -61,7 +100,6 @@ export default function Trading() {
     const avgWin = profits.length > 0 ? totalProfit / profits.length : 0
     const avgLoss = losses.length > 0 ? totalLoss / losses.length : 0
     
-    // جمع کل واریزها و برداشت‌ها
     const totalDeposits = activities
       .filter(a => a.type === 'deposit')
       .reduce((sum, a) => sum + a.amount, 0)
@@ -82,21 +120,24 @@ export default function Trading() {
       avgWin,
       avgLoss,
       totalDeposits,
-      totalWithdrawals
+      totalWithdrawals,
     }
   }, [activities])
 
-  // فیلتر فعالیت‌ها
+  // ==================== فیلترها ====================
   const filteredActivities = activities.filter(a => {
-    const account = accounts.find(acc => acc.id === a.accountId)
+    if (filterType !== 'all' && a.type !== filterType) return false
+    if (filterAccount !== 'all' && a.account_id !== parseInt(filterAccount)) return false
+    
+    const account = accounts.find(acc => acc.id === a.account_id)
     const accountName = account ? account.name.toLowerCase() : ''
     const desc = a.description ? a.description.toLowerCase() : ''
-    return (
-      accountName.includes(debouncedSearchQuery.toLowerCase()) ||
-      desc.includes(debouncedSearchQuery.toLowerCase())
-    )
+    const query = searchQuery.toLowerCase()
+    
+    return accountName.includes(query) || desc.includes(query)
   })
 
+  // ==================== اعتبارسنجی ====================
   const validateForm = () => {
     const errors = {}
     if (!accountId) errors.accountId = 'انتخاب حساب ترید الزامی است'
@@ -106,57 +147,51 @@ export default function Trading() {
     return Object.keys(errors).length === 0
   }
 
-  const handleAmountChange = (e) => {
-    const value = e.target.value.replace(/,/g, '')
-    if (value === '' || /^\d*\.?\d*$/.test(value)) {
-      setAmount(value ? formatNumber(parseFloat(value)) : '')
-      if (formErrors.amount) setFormErrors({...formErrors, amount: undefined})
-    }
-  }
-
+  // ==================== عملیات‌ها ====================
   const handleSubmit = async (e) => {
     e.preventDefault()
     
     if (!validateForm()) {
-      await alert({
-        title: 'خطا در اعتبارسنجی',
-        message: 'لطفاً فیلدهای الزامی را به درستی پر کنید',
-        type: 'error'
+      toast.error('خطا در اعتبارسنجی', {
+        description: 'لطفاً فیلدهای الزامی را به درستی پر کنید',
       })
       return
     }
 
     setIsSubmitting(true)
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    addActivity({
-      type,
-      accountId: parseInt(accountId),
-      amount: parseNumber(amount),
-      date,
-      description
-    })
-
-    await alert({
-      title: 'موفقیت',
-      message: 'فعالیت با موفقیت ثبت شد',
-      type: 'success'
-    })
-
-    setAmount('')
-    setDescription('')
-    setAccountId('')
-    setFormErrors({})
-    setIsSubmitting(false)
+    try {
+      const invoke = getInvoke()
+      await invoke('add_activity', {
+        type: type,
+        accountId: parseInt(accountId),  // ✅ اصلاح: accountId به جای account_id
+        amount: parseFloat(amount),
+        date: date,
+        description: description || null
+      })
+      
+      toast.success('فعالیت با موفقیت ثبت شد')
+      await fetchData()
+      
+      setAmount('')
+      setDescription('')
+      setAccountId('')
+      setFormErrors({})
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('خطا', {
+        description: error.message || 'عملیات با شکست مواجه شد',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  // ==================== ویرایش (رفع باگ کامل) ====================
   const handleEdit = (activity) => {
     setEditingId(activity.id)
     setEditForm({
       type: activity.type,
-      accountId: activity.accountId.toString(),
-      amount: formatNumber(activity.amount),
+      accountId: activity.account_id.toString(),
+      amount: activity.amount.toString(),
       date: activity.date,
       description: activity.description || ''
     })
@@ -164,34 +199,34 @@ export default function Trading() {
 
   const handleSaveEdit = async () => {
     if (!editForm.amount || parseFloat(editForm.amount) <= 0) {
-      await alert({
-        title: 'خطا',
-        message: 'مبلغ باید بیشتر از صفر باشد',
-        type: 'error'
-      })
+      toast.error('خطا', { description: 'مبلغ باید بیشتر از صفر باشد' })
       return
     }
 
     setIsSubmitting(true)
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    updateActivity(editingId, {
-      type: editForm.type,
-      accountId: parseInt(editForm.accountId),
-      amount: parseNumber(editForm.amount),
-      date: editForm.date,
-      description: editForm.description
-    })
-
-    await alert({
-      title: 'موفقیت',
-      message: 'فعالیت با موفقیت ویرایش شد',
-      type: 'success'
-    })
-
-    setEditingId(null)
-    setEditForm({})
-    setIsSubmitting(false)
+    try {
+      const invoke = getInvoke()
+      await invoke('update_activity', {
+        id: editingId,
+        type: editForm.type,
+        accountId: parseInt(editForm.accountId),  // ✅ اصلاح: accountId به جای account_id
+        amount: parseFloat(editForm.amount),
+        date: editForm.date,
+        description: editForm.description || null
+      })
+      
+      toast.success('فعالیت با موفقیت ویرایش شد')
+      await fetchData()
+      setEditingId(null)
+      setEditForm({})
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('خطا', {
+        description: error.message || 'عملیات با شکست مواجه شد',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleCancelEdit = () => {
@@ -199,24 +234,46 @@ export default function Trading() {
     setEditForm({})
   }
 
-  // ==================== حذف (رفع باگ کامل) ====================
   const handleDelete = async (activity) => {
-    const confirmed = await confirm({
-      title: 'حذف فعالیت',
-      message: `آیا از حذف این فعالیت مطمئن هستید؟ این عمل قابل بازگشت نیست.`,
-      type: 'danger',
-      confirmText: 'حذف',
-      cancelText: 'انصراف'
-    })
+    if (!confirm(`آیا از حذف این فعالیت مطمئن هستید؟`)) return
     
-    if (confirmed) {
-      deleteActivity(activity.id)
-      await alert({
-        title: 'حذف شد',
-        message: 'فعالیت با موفقیت حذف شد',
-        type: 'info'
+    try {
+      const invoke = getInvoke()
+      await invoke('delete_activity', { id: activity.id })
+      toast.success('فعالیت با موفقیت حذف شد')
+      await fetchData()
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('خطا در حذف', {
+        description: error.message || 'امکان حذف این فعالیت وجود ندارد',
       })
     }
+  }
+
+  // ==================== خروجی ====================
+  const handleExport = () => {
+    const headers = ['نوع', 'حساب', 'مبلغ', 'تاریخ', 'توضیحات']
+    const rows = filteredActivities.map(a => {
+      const account = accounts.find(acc => acc.id === a.account_id)
+      return [
+        a.type,
+        account ? account.name : '-',
+        a.amount,
+        a.date,
+        a.description || ''
+      ]
+    })
+    
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `trading_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    toast.success('خروجی با موفقیت گرفته شد')
   }
 
   const getAccountInfo = (id) => {
@@ -251,199 +308,258 @@ export default function Trading() {
     }
   }
 
-  return (
-    <div className="p-8 space-y-8 animate-fade-in-up bg-grid-ultra min-h-screen" dir="rtl">
-      <ConfirmComponent />
-      <AlertComponent />
-
-      {/* هدر */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-black text-gradient-ultra">ثبت فعالیت ترید</h1>
-          <p className="text-base text-slate-400 mt-3">سود، ضرر، واریز و برداشت خود را سریع ثبت کنید</p>
+  // ==================== رندر لودینگ ====================
+  if (loading) {
+    return (
+      <div className="p-8 space-y-8" dir="rtl">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="h-10 w-48 bg-slate-800/50 rounded-xl animate-pulse" />
+            <div className="h-5 w-64 bg-slate-800/30 rounded-lg mt-3 animate-pulse" />
+          </div>
         </div>
-        <div className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-slate-800/50 border-2 border-slate-700/50 backdrop-blur-xl">
-          <Clock className="w-5 h-5 text-slate-400" />
-          <span className="text-sm text-slate-400">تاریخ:</span>
-          <span className="text-sm font-bold text-gradient-ultra font-mono">{getPersianDate()}</span>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="p-4 rounded-2xl border border-slate-800 bg-slate-900/50 animate-pulse">
+              <div className="h-4 w-16 bg-slate-800/50 mb-2" />
+              <div className="h-8 w-24 bg-slate-800/50" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // ==================== رندر اصلی ====================
+  return (
+    <div className="p-8 space-y-8" dir="rtl">
+      {/* ==================== هدر ==================== */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-4xl font-black bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+            📊 ثبت فعالیت ترید
+          </h1>
+          <p className="text-base text-slate-400 mt-2">
+            سود، ضرر، واریز و برداشت خود را ثبت کنید
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/50 border border-slate-700">
+            <Clock className="w-4 h-4 text-slate-400" />
+            <span className="text-sm text-slate-400">تاریخ:</span>
+            <span className="text-sm font-bold text-white">{getPersianDate()}</span>
+          </div>
+          <button
+            onClick={handleExport}
+            className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 transition-all"
+            title="خروجی"
+          >
+            <Download className="w-5 h-5 text-slate-400 hover:text-white" />
+          </button>
+          <button
+            onClick={fetchData}
+            className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 transition-all"
+            title="بروزرسانی"
+          >
+            <RefreshCw className="w-5 h-5 text-slate-400 hover:text-white" />
+          </button>
         </div>
       </div>
 
-      {/* ==================== آمار زنده ترید ==================== */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {/* Win Rate */}
-        <div className="stat-card-ultra p-4">
-          <div className="flex items-center gap-2 mb-2">
+      {/* ==================== آمار ==================== */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/30">
+          <div className="flex items-center gap-2 mb-1">
             <Target className="w-4 h-4 text-emerald-400" />
             <span className="text-xs text-slate-400">Win Rate</span>
           </div>
-          <p className={`text-2xl font-black font-mono ${tradeStats.winRate >= 50 ? 'text-gradient-ultra' : 'text-gradient-danger'}`}>
+          <p className={cn(
+            "text-2xl font-black",
+            tradeStats.winRate >= 50 ? "text-emerald-400" : "text-red-400"
+          )}>
             {tradeStats.winRate.toFixed(1)}%
           </p>
           <p className="text-xs text-slate-500 mt-1">{tradeStats.wins}W / {tradeStats.losses}L</p>
         </div>
 
-        {/* Profit Factor */}
-        <div className="stat-card-ultra p-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/30">
+          <div className="flex items-center gap-2 mb-1">
             <Percent className="w-4 h-4 text-blue-400" />
             <span className="text-xs text-slate-400">Profit Factor</span>
           </div>
-          <p className={`text-2xl font-black font-mono ${tradeStats.profitFactor >= 1 ? 'text-gradient-ultra' : 'text-gradient-danger'}`}>
+          <p className="text-2xl font-black text-blue-400">
             {tradeStats.profitFactor === Infinity ? '∞' : tradeStats.profitFactor.toFixed(2)}
           </p>
           <p className="text-xs text-slate-500 mt-1">سود به ضرر</p>
         </div>
 
-        {/* Total PnL */}
-        <div className="stat-card-ultra p-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/30">
+          <div className="flex items-center gap-2 mb-1">
             <DollarSign className="w-4 h-4 text-purple-400" />
             <span className="text-xs text-slate-400">Total PnL</span>
           </div>
-          <p className={`text-2xl font-black font-mono ${tradeStats.totalPnL >= 0 ? 'text-gradient-ultra' : 'text-gradient-danger'}`}>
+          <p className={cn(
+            "text-2xl font-black",
+            tradeStats.totalPnL >= 0 ? "text-emerald-400" : "text-red-400"
+          )}>
             {tradeStats.totalPnL >= 0 ? '+' : ''}{formatNumber(tradeStats.totalPnL)}
           </p>
           <p className="text-xs text-slate-500 mt-1">سود خالص</p>
         </div>
 
-        {/* Average Win */}
-        <div className="stat-card-ultra p-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/30">
+          <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-4 h-4 text-emerald-400" />
             <span className="text-xs text-slate-400">Avg Win</span>
           </div>
-          <p className="text-2xl font-black text-gradient-ultra font-mono">
+          <p className="text-2xl font-black text-emerald-400">
             {formatNumber(tradeStats.avgWin.toFixed(2))}
           </p>
           <p className="text-xs text-slate-500 mt-1">میانگین سود</p>
         </div>
 
-        {/* Average Loss */}
-        <div className="stat-card-ultra p-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/30">
+          <div className="flex items-center gap-2 mb-1">
             <TrendingDown className="w-4 h-4 text-red-400" />
             <span className="text-xs text-slate-400">Avg Loss</span>
           </div>
-          <p className="text-2xl font-black text-gradient-danger font-mono">
+          <p className="text-2xl font-black text-red-400">
             {formatNumber(tradeStats.avgLoss.toFixed(2))}
           </p>
           <p className="text-xs text-slate-500 mt-1">میانگین ضرر</p>
         </div>
 
-        {/* Total Withdrawals (جایگزین Streak) */}
-        <div className="stat-card-ultra p-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/30">
+          <div className="flex items-center gap-2 mb-1">
             <Wallet className="w-4 h-4 text-amber-400" />
-            <span className="text-xs text-slate-400">جمع برداشت‌ها</span>
+            <span className="text-xs text-slate-400">برداشت‌ها</span>
           </div>
-          <p className="text-2xl font-black text-amber-400 font-mono">
+          <p className="text-2xl font-black text-amber-400">
             {formatNumber(tradeStats.totalWithdrawals.toFixed(2))}
           </p>
           <p className="text-xs text-slate-500 mt-1">واریز: {formatNumber(tradeStats.totalDeposits.toFixed(2))}</p>
         </div>
       </div>
 
+      {/* ==================== فرم و لیست ==================== */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* فرم ثبت */}
         <div className="lg:col-span-2 space-y-6">
-          <Card className="card-ultra animate-fade-in-up delay-100">
+          <Card className="border-slate-800 bg-slate-900/30">
             <CardHeader>
               <CardTitle className="text-white text-xl font-bold flex items-center gap-2">
                 <PlusCircle className="w-6 h-6 text-emerald-400" />
                 ثبت فعالیت جدید
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-8">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                
-                <FormField label="نوع فعالیت" required>
-                  <div className="grid grid-cols-4 gap-4">
+            <CardContent className="p-6">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {/* نوع فعالیت */}
+                <div>
+                  <Label className="text-slate-400">نوع فعالیت *</Label>
+                  <div className="grid grid-cols-4 gap-3 mt-2">
                     {Object.entries(typeStyles).map(([key, style]) => (
                       <button
                         key={key}
                         type="button"
                         onClick={() => setType(key)}
-                        className={`flex flex-col items-center gap-3 p-5 rounded-2xl transition-all duration-300 ${
+                        className={cn(
+                          "flex flex-col items-center gap-2 p-4 rounded-xl transition-all",
                           type === key ? style.active : style.inactive
-                        }`}
+                        )}
                       >
-                        <style.icon className="w-7 h-7" />
-                        <span className={`text-sm ${type === key ? 'font-black' : 'font-bold'}`}>
-                          {style.label}
-                        </span>
+                        <style.icon className="w-6 h-6" />
+                        <span className="text-xs font-bold">{style.label}</span>
                       </button>
                     ))}
                   </div>
-                </FormField>
+                </div>
 
-                <FormField label="حساب ترید" error={formErrors.accountId} required>
+                {/* حساب ترید */}
+                <div>
+                  <Label className="text-slate-400">حساب ترید *</Label>
                   <Select 
                     value={accountId} 
                     onValueChange={(v) => { setAccountId(v); if (formErrors.accountId) setFormErrors({...formErrors, accountId: undefined}) }}
                   >
-                    <SelectTrigger className="input-ultra h-14">
+                    <SelectTrigger className={cn(
+                      "mt-1 bg-slate-800/50 border-slate-700 text-white",
+                      formErrors.accountId && "border-red-500"
+                    )}>
                       <SelectValue placeholder="یک حساب ترید انتخاب کنید" />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
+                    <SelectContent className="bg-slate-900 border-slate-800">
                       {tradingAccounts.length === 0 ? (
                         <div className="p-3 text-slate-400 text-sm">حساب تریدی یافت نشد</div>
                       ) : (
                         tradingAccounts.map((acc) => (
-                          <SelectItem key={acc.id} value={acc.id.toString()} className="text-white focus:bg-slate-800 rounded-xl">
+                          <SelectItem key={acc.id} value={acc.id.toString()} className="text-white">
                             {acc.name} ({acc.currency})
                           </SelectItem>
                         ))
                       )}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-slate-500 mt-1">فقط حساب‌های ترید نمایش داده می‌شوند</p>
-                </FormField>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <FormField label="مبلغ" error={formErrors.amount} required>
-                    <Input
-                      type="text"
-                      value={amount}
-                      onChange={handleAmountChange}
-                      placeholder="0.00"
-                      className="input-ultra h-14 text-lg font-mono"
-                    />
-                  </FormField>
-                  <FormField label="تاریخ" error={formErrors.date} required>
-                    <div className="relative">
-                      <Input
-                        type="text"
-                        value={date}
-                        onChange={(e) => { setDate(e.target.value); if (formErrors.date) setFormErrors({...formErrors, date: undefined}) }}
-                        className="input-ultra h-14 text-lg font-mono pl-12"
-                      />
-                      <Clock className="absolute left-4 top-4 w-6 h-6 text-emerald-400" />
-                    </div>
-                  </FormField>
+                  {formErrors.accountId && (
+                    <p className="text-xs text-red-400 mt-1">{formErrors.accountId}</p>
+                  )}
                 </div>
 
-                <FormField label="توضیحات (اختیاری)">
-                  <div className="relative">
+                {/* مبلغ و تاریخ */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-slate-400">مبلغ *</Label>
+                    <Input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => { setAmount(e.target.value); if (formErrors.amount) setFormErrors({...formErrors, amount: undefined}) }}
+                      placeholder="0.00"
+                      className={cn(
+                        "mt-1 bg-slate-800/50 border-slate-700 text-white",
+                        formErrors.amount && "border-red-500"
+                      )}
+                    />
+                    {formErrors.amount && (
+                      <p className="text-xs text-red-400 mt-1">{formErrors.amount}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-slate-400">تاریخ *</Label>
                     <Input
                       type="text"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="مثلاً: سود ترید BTC..."
-                      className="input-ultra h-14 pl-12"
+                      value={date}
+                      onChange={(e) => { setDate(e.target.value); if (formErrors.date) setFormErrors({...formErrors, date: undefined}) }}
+                      className={cn(
+                        "mt-1 bg-slate-800/50 border-slate-700 text-white",
+                        formErrors.date && "border-red-500"
+                      )}
                     />
-                    <FileText className="absolute left-4 top-4 w-6 h-6 text-slate-500" />
+                    {formErrors.date && (
+                      <p className="text-xs text-red-400 mt-1">{formErrors.date}</p>
+                    )}
                   </div>
-                </FormField>
+                </div>
 
-                <LoadingButton 
+                {/* توضیحات */}
+                <div>
+                  <Label className="text-slate-400">توضیحات (اختیاری)</Label>
+                  <Input
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="مثلاً: سود ترید BTC..."
+                    className="mt-1 bg-slate-800/50 border-slate-700 text-white"
+                  />
+                </div>
+
+                <button
                   type="submit"
-                  loading={isSubmitting}
-                  className="btn-ultra btn-ultra-primary w-full h-16 text-lg font-black"
+                  disabled={isSubmitting}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  <PlusCircle className="w-6 h-6" />
-                  ثبت فعالیت
-                </LoadingButton>
+                  <PlusCircle className="w-5 h-5" />
+                  {isSubmitting ? 'در حال ثبت...' : 'ثبت فعالیت'}
+                </button>
               </form>
             </CardContent>
           </Card>
@@ -451,129 +567,157 @@ export default function Trading() {
 
         {/* لیست فعالیت‌ها */}
         <div className="space-y-6">
-          <Card className="card-ultra animate-fade-in-up delay-200">
+          <Card className="border-slate-800 bg-slate-900/30">
             <CardHeader>
-              <CardTitle className="text-white text-xl font-bold flex items-center justify-between">
+              <CardTitle className="text-white text-lg font-bold flex items-center justify-between">
                 <span className="flex items-center gap-2">
-                  <FileText className="w-6 h-6 text-blue-400" />
-                  فعالیت‌های اخیر
+                  <FileText className="w-5 h-5 text-blue-400" />
+                  فعالیت‌ها
                 </span>
-                <span className="badge-ultra badge-info-ultra text-xs">
-                  {activities.length} مورد
+                <span className="text-xs text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                  {filteredActivities.length} مورد
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <div className="search-bar-ultra mb-4">
-                <Search className="search-icon" />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="جستجو در فعالیت‌ها..."
-                />
+            <CardContent className="p-4">
+              {/* فیلترها */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="flex-1 min-w-[80px] px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-700 text-white text-xs outline-none"
+                >
+                  <option value="all">همه</option>
+                  <option value="profit">سود</option>
+                  <option value="loss">ضرر</option>
+                  <option value="deposit">واریز</option>
+                  <option value="withdraw">برداشت</option>
+                </select>
+                
+                <select
+                  value={filterAccount}
+                  onChange={(e) => setFilterAccount(e.target.value)}
+                  className="flex-1 min-w-[80px] px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-700 text-white text-xs outline-none"
+                >
+                  <option value="all">همه حساب‌ها</option>
+                  {tradingAccounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                  ))}
+                </select>
+
+                <div className="flex items-center gap-1 flex-1 min-w-[100px] px-3 py-1.5 rounded-xl bg-slate-800/50 border border-slate-700">
+                  <Search className="w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="جستجو..."
+                    className="bg-transparent border-none outline-none text-white text-xs w-full"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar-ultra pl-2">
+              {/* لیست */}
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
                 {filteredActivities.length === 0 ? (
-                  <EmptyState
-                    icon={Inbox}
-                    title={searchQuery ? 'فعالیتی یافت نشد' : 'هنوز فعالیتی ثبت نشده است'}
-                    description={searchQuery ? 'عبارت جستجو را تغییر دهید' : 'اولین فعالیت خود را ثبت کنید'}
-                    searchActive={!!searchQuery}
-                  />
+                  <div className="text-center py-8 text-slate-400">
+                    <Inbox className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">هیچ فعالیتی یافت نشد</p>
+                  </div>
                 ) : (
-                  filteredActivities.map((activity) => (
-                    <div key={activity.id} className="item-card-ultra p-4 group">
-                      {editingId === activity.id ? (
-                        <div className="space-y-3">
-                          <Select value={editForm.type} onValueChange={(v) => setEditForm({...editForm, type: v})}>
-                            <SelectTrigger className="input-ultra h-10 text-sm">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
-                              <SelectItem value="profit" className="text-white">سود</SelectItem>
-                              <SelectItem value="loss" className="text-white">ضرر</SelectItem>
-                              <SelectItem value="deposit" className="text-white">واریز</SelectItem>
-                              <SelectItem value="withdraw" className="text-white">برداشت</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="text"
-                            value={editForm.amount}
-                            onChange={handleAmountChange}
-                            className="input-ultra h-10 text-sm font-mono"
-                          />
-                          <Input
-                            type="text"
-                            value={editForm.date}
-                            onChange={(e) => setEditForm({...editForm, date: e.target.value})}
-                            className="input-ultra h-10 text-sm font-mono"
-                          />
-                          <div className="flex gap-2">
-                            <LoadingButton 
-                              onClick={handleSaveEdit} 
-                              loading={isSubmitting}
-                              className="btn-ultra btn-ultra-primary flex-1 h-10 text-sm"
+                  filteredActivities.map((activity) => {
+                    const isProfit = activity.type === 'profit'
+                    const isLoss = activity.type === 'loss'
+                    const isDeposit = activity.type === 'deposit'
+                    const isWithdraw = activity.type === 'withdraw'
+                    const color = isProfit ? 'emerald' : isLoss ? 'red' : isDeposit ? 'blue' : 'amber'
+                    const Icon = isProfit ? TrendingUp : isLoss ? TrendingDown : isDeposit ? ArrowUpCircle : ArrowDownCircle
+                    
+                    return (
+                      <div key={activity.id} className="p-3 rounded-xl bg-slate-800/20 hover:bg-slate-800/40 transition-all group">
+                        {editingId === activity.id ? (
+                          <div className="space-y-2">
+                            <select
+                              value={editForm.type}
+                              onChange={(e) => setEditForm({...editForm, type: e.target.value})}
+                              className="w-full p-2 rounded-xl bg-slate-800/50 border border-slate-700 text-white text-sm outline-none"
                             >
-                              <Check className="w-4 h-4 ml-1" /> ذخیره
-                            </LoadingButton>
-                            <Button 
-                              onClick={handleCancelEdit} 
-                              className="btn-ultra btn-ultra-secondary flex-1 h-10 text-sm"
-                            >
-                              <X className="w-4 h-4 ml-1" /> انصراف
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className={`stat-icon-ultra w-10 h-10 ${
-                              activity.type === 'profit' ? 'bg-emerald-500/20' :
-                              activity.type === 'loss' ? 'bg-red-500/20' :
-                              activity.type === 'deposit' ? 'bg-blue-500/20' :
-                              'bg-amber-500/20'
-                            }`}>
-                              {activity.type === 'profit' ? <TrendingUp className="w-5 h-5 text-emerald-400" /> :
-                               activity.type === 'loss' ? <TrendingDown className="w-5 h-5 text-red-400" /> :
-                               activity.type === 'deposit' ? <ArrowUpCircle className="w-5 h-5 text-blue-400" /> :
-                               <ArrowDownCircle className="w-5 h-5 text-amber-400" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-white font-bold text-sm truncate">{activity.description || 'بدون توضیحات'}</p>
-                              <p className="text-xs text-slate-400 truncate mt-1">{getAccountInfo(activity.accountId)} • {activity.date}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <p className={`font-black text-base font-mono ${
-                              activity.type === 'profit' ? 'text-gradient-ultra' :
-                              activity.type === 'loss' ? 'text-gradient-danger' :
-                              activity.type === 'deposit' ? 'text-gradient-blue' :
-                              'text-amber-400'
-                            }`}>
-                              {activity.type === 'loss' || activity.type === 'withdraw' ? '-' : '+'}{formatNumber(activity.amount)}
-                            </p>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button 
-                                onClick={() => handleEdit(activity)}
-                                className="btn-icon-ultra p-2"
-                                title="ویرایش"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
+                              <option value="profit">سود</option>
+                              <option value="loss">ضرر</option>
+                              <option value="deposit">واریز</option>
+                              <option value="withdraw">برداشت</option>
+                            </select>
+                            <input
+                              type="number"
+                              value={editForm.amount}
+                              onChange={(e) => setEditForm({...editForm, amount: e.target.value})}
+                              className="w-full p-2 rounded-xl bg-slate-800/50 border border-slate-700 text-white text-sm outline-none"
+                            />
+                            <input
+                              type="text"
+                              value={editForm.date}
+                              onChange={(e) => setEditForm({...editForm, date: e.target.value})}
+                              className="w-full p-2 rounded-xl bg-slate-800/50 border border-slate-700 text-white text-sm outline-none"
+                            />
+                            <div className="flex gap-2">
+                              <button onClick={handleSaveEdit} className="flex-1 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm font-bold">
+                                ذخیره
                               </button>
-                              <button 
-                                onClick={() => handleDelete(activity)}
-                                className="btn-icon-ultra btn-icon-danger p-2"
-                                title="حذف"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
+                              <button onClick={handleCancelEdit} className="flex-1 py-1.5 rounded-xl bg-slate-800/50 text-slate-400 text-sm font-bold">
+                                انصراف
                               </button>
                             </div>
                           </div>
-                        </>
-                      )}
-                    </div>
-                  ))
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "p-2 rounded-xl",
+                                color === 'emerald' && "bg-emerald-500/10",
+                                color === 'red' && "bg-red-500/10",
+                                color === 'blue' && "bg-blue-500/10",
+                                color === 'amber' && "bg-amber-500/10",
+                              )}>
+                                <Icon className={cn(
+                                  "w-4 h-4",
+                                  color === 'emerald' && "text-emerald-400",
+                                  color === 'red' && "text-red-400",
+                                  color === 'blue' && "text-blue-400",
+                                  color === 'amber' && "text-amber-400",
+                                )} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-white font-bold text-sm truncate">
+                                  {activity.description || 'بدون توضیحات'}
+                                </p>
+                                <p className="text-xs text-slate-400 truncate">
+                                  {getAccountInfo(activity.account_id)} • {activity.date}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <p className={cn(
+                                  "font-black text-sm",
+                                  color === 'emerald' && "text-emerald-400",
+                                  color === 'red' && "text-red-400",
+                                  color === 'blue' && "text-blue-400",
+                                  color === 'amber' && "text-amber-400",
+                                )}>
+                                  {isLoss || isWithdraw ? '-' : '+'}{formatNumber(activity.amount)}
+                                </p>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => handleEdit(activity)} className="p-1.5 rounded-lg hover:bg-slate-800/50">
+                                    <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+                                  </button>
+                                  <button onClick={() => handleDelete(activity)} className="p-1.5 rounded-lg hover:bg-red-500/10">
+                                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })
                 )}
               </div>
             </CardContent>

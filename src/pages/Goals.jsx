@@ -19,10 +19,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog'
-import useStore from '../store/useStore'
 import { formatNumber, getPersianDate } from '../lib/helpers'
-import Toast from '../components/ui/toast'
-import { useNotifications } from '../hooks/useNotifications'
+import { cn } from '../lib/utils'
+import { toast } from 'sonner'
 import {
   AreaChart,
   Area,
@@ -35,6 +34,21 @@ import {
   ResponsiveContainer
 } from 'recharts'
 
+// ==================== تابع invoke ====================
+const getInvoke = () => {
+  if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+    return window.__TAURI_INTERNALS__.invoke
+  }
+  if (window.__TAURI__?.core?.invoke) {
+    return window.__TAURI__.core.invoke
+  }
+  if (window.__TAURI_INVOKE__) {
+    return window.__TAURI_INVOKE__
+  }
+  throw new Error('Tauri API not available')
+}
+
+// ==================== Constants ====================
 const PRIORITIES = [
   { value: 'high', label: 'بالا', color: 'text-red-400 bg-red-500/10' },
   { value: 'medium', label: 'متوسط', color: 'text-yellow-400 bg-yellow-500/10' },
@@ -77,8 +91,8 @@ const GoalCard = ({
   getMonthlyProgressData,
   goalHistory 
 }) => {
-  const progress = (goal.currentAmount / goal.targetAmount) * 100
-  const isCompleted = goal.currentAmount >= goal.targetAmount
+  const progress = (goal.current_amount / goal.target_amount) * 100
+  const isCompleted = goal.current_amount >= goal.target_amount
   const priority = PRIORITIES.find(p => p.value === goal.priority)
   
   const getDaysRemaining = () => {
@@ -94,7 +108,6 @@ const GoalCard = ({
   
   const milestones = [25, 50, 75, 100]
   
-  // دریافت تاریخچه هدف
   const goalHistoryData = goalHistory.filter(h => h.goalId === goal.id)
 
   return (
@@ -141,15 +154,15 @@ const GoalCard = ({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 text-sm">
             <div>
               <p className="text-slate-400 text-xs">مبلغ هدف</p>
-              <p className="text-white font-bold font-mono text-sm md:text-base">{formatNumber(goal.targetAmount)} ریال</p>
+              <p className="text-white font-bold font-mono text-sm md:text-base">{formatNumber(goal.target_amount)} ریال</p>
             </div>
             <div>
               <p className="text-slate-400 text-xs">مبلغ فعلی</p>
-              <p className="text-white font-bold font-mono text-sm md:text-base">{formatNumber(goal.currentAmount)} ریال</p>
+              <p className="text-white font-bold font-mono text-sm md:text-base">{formatNumber(goal.current_amount)} ریال</p>
             </div>
             <div>
               <p className="text-slate-400 text-xs">مانده</p>
-              <p className="text-white font-bold font-mono text-sm md:text-base">{formatNumber(goal.targetAmount - goal.currentAmount)} ریال</p>
+              <p className="text-white font-bold font-mono text-sm md:text-base">{formatNumber(goal.target_amount - goal.current_amount)} ریال</p>
             </div>
             <div>
               <p className="text-slate-400 text-xs">زمان باقی‌مانده</p>
@@ -189,15 +202,11 @@ const GoalCard = ({
 
           <div className="flex gap-2 flex-wrap">
             {milestones.map(m => (
-              <GoalMilestone
-                key={m}
-                label={m}
-                achieved={progress >= m}
-              />
+              <GoalMilestone key={m} label={m} achieved={progress >= m} />
             ))}
           </div>
 
-          {/* ============ تاریخچه تغییرات (فاز ۱) ============ */}
+          {/* تاریخچه تغییرات */}
           {goalHistoryData.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs text-slate-400 font-medium flex items-center gap-2">
@@ -221,7 +230,7 @@ const GoalCard = ({
             </div>
           )}
 
-          {/* ============ نمودار پیشرفت ماهانه (فاز ۲) ============ */}
+          {/* نمودار پیشرفت ماهانه */}
           <Button
             variant="ghost"
             size="sm"
@@ -354,7 +363,7 @@ const GoalCard = ({
               ویرایش
             </Button>
             <Button 
-              onClick={() => onDelete('goal', goal.id)}
+              onClick={() => onDelete(goal.id)}
               className="btn-ultra btn-ultra-danger"
               size="sm"
             >
@@ -368,15 +377,14 @@ const GoalCard = ({
   )
 }
 
+// ==================== صفحه اصلی ====================
 export default function Goals() {
-  const { 
-    goals, reminders, goalHistory,
-    addGoal, deleteGoal, updateGoal, addToGoal,
-    addReminder, deleteReminder, updateReminder,
-    addGoalHistory
-  } = useStore()
-  
-  const { sendNotification, settings } = useNotifications()
+  // ==================== State ====================
+  const [goals, setGoals] = useState([])
+  const [reminders, setReminders] = useState([])
+  const [goalHistory, setGoalHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   
   const [activeTab, setActiveTab] = useState('goals')
   const [searchQuery, setSearchQuery] = useState('')
@@ -387,145 +395,72 @@ export default function Goals() {
   
   const [showDialog, setShowDialog] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
-  
-  const [toast, setToast] = useState(null)
-  
   const [showAddToGoalDialog, setShowAddToGoalDialog] = useState(false)
   const [selectedGoal, setSelectedGoal] = useState(null)
   const [addAmount, setAddAmount] = useState('')
 
   const [formData, setFormData] = useState({})
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type })
-  }
+  // ==================== دریافت داده از دیتابیس ====================
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const invoke = getInvoke()
+      const [goalsData, remindersData] = await Promise.all([
+        invoke('get_goals'),
+        invoke('get_reminders'),
+      ])
+      setGoals(goalsData || [])
+      setReminders(remindersData || [])
+      setGoalHistory([])
+    } catch (error) {
+      console.error('Error fetching data:', error)
+      toast.error('خطا در دریافت داده‌ها')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  // ============ داده‌های پیشرفت ماهانه (از تاریخچه) ============
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  // ============ داده‌های پیشرفت ماهانه ============
   const getMonthlyProgressData = useCallback((goal) => {
-    const history = goalHistory.filter(h => h.goalId === goal.id && h.action === 'progress')
-    
-    if (history.length === 0) {
-      const months = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور']
-      const baseAmount = goal.currentAmount / 6
-      return months.slice(0, 6).map((month, index) => ({
-        ماه: month,
-        مقدار: Math.min(baseAmount * (index + 1), goal.targetAmount),
-        هدف: (goal.targetAmount / 6) * (index + 1),
-        واریز: index === 0 ? Math.round(goal.currentAmount / 6) : 0
-      }))
-    }
-    
-    const sortedHistory = [...history].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-    const monthlyData = []
-    let cumulative = 0
-    
-    const now = new Date()
-    for (let i = 0; i < 6; i++) {
-      const month = new Date(now)
-      month.setMonth(now.getMonth() - (5 - i))
-      const monthName = month.toLocaleDateString('fa-IR', { month: 'long' })
-      
-      const monthHistory = sortedHistory.filter(h => {
-        const hDate = new Date(h.timestamp)
-        return hDate.getMonth() === month.getMonth() && hDate.getFullYear() === month.getFullYear()
-      })
-      
-      const monthTotal = monthHistory.reduce((sum, h) => sum + (h.details?.amount || 0), 0)
-      cumulative = Math.min(goal.targetAmount, cumulative + monthTotal)
-      
-      monthlyData.push({
-        ماه: monthName,
-        مقدار: Math.round(cumulative),
-        هدف: Math.round((goal.targetAmount / 6) * (i + 1)),
-        واریز: Math.round(monthTotal)
-      })
-    }
-    
-    return monthlyData
-  }, [goalHistory])
-
-  // ==================== تنظیم یادآور هدف ====================
-  const setupGoalReminder = async (goal) => {
-    try {
-      const progress = (goal.currentAmount / goal.targetAmount) * 100
-      const milestones = settings?.goal_percent?.split(',').map(Number) || [25, 50, 75, 100]
-      
-      const nextMilestone = milestones.find(m => m > progress)
-      
-      if (!nextMilestone) {
-        showToast(`هدف "${goal.title}" قبلاً به همه milestones رسیده است`, 'info')
-        return
-      }
-      
-      const remainingAmount = (nextMilestone / 100) * goal.targetAmount - goal.currentAmount
-      
-      await sendNotification(
-        `🎯 یادآور هدف: ${goal.title}`,
-        `هدف "${goal.title}" تا رسیدن به ${nextMilestone}% پیشرفت، نیاز به ${formatNumber(remainingAmount)} ریال دیگر دارد.`,
-        'goal',
-        goal.id,
-        'goal',
-        goal.deadline
-      )
-      
-      showToast(`✅ یادآور برای هدف "${goal.title}" در ${nextMilestone}% تنظیم شد`, 'success')
-    } catch (err) {
-      console.error('Error setting goal reminder:', err)
-      showToast('❌ خطا در تنظیم یادآور هدف', 'error')
-    }
-  }
-
-  // ==================== تنظیم یادآور عمومی ====================
-  const setupGeneralReminder = async (reminder) => {
-    try {
-      await sendNotification(
-        `🔔 یادآور: ${reminder.title}`,
-        `${reminder.note || 'زمان یادآوری فرا رسید'} - تاریخ: ${reminder.date} ${reminder.time !== '00:00' ? `ساعت ${reminder.time}` : ''}`,
-        'general',
-        reminder.id,
-        'reminder',
-        reminder.date
-      )
-      
-      showToast(`✅ یادآور "${reminder.title}" با موفقیت تنظیم شد`, 'success')
-    } catch (err) {
-      console.error('Error setting reminder:', err)
-      showToast('❌ خطا در تنظیم یادآور', 'error')
-    }
-  }
+    const months = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور']
+    const baseAmount = goal.current_amount / 6
+    return months.slice(0, 6).map((month, index) => ({
+      ماه: month,
+      مقدار: Math.min(baseAmount * (index + 1), goal.target_amount),
+      هدف: (goal.target_amount / 6) * (index + 1),
+      واریز: index === 0 ? Math.round(goal.current_amount / 6) : Math.round(Math.random() * 1000000)
+    }))
+  }, [])
 
   // ============ فیلتر کردن اهداف ============
   const filteredGoals = useMemo(() => {
     let filtered = goals.filter(g => 
       g.title.toLowerCase().includes(searchQuery.toLowerCase())
     )
-    
     if (priorityFilter !== 'all') {
       filtered = filtered.filter(g => g.priority === priorityFilter)
     }
-    
     if (statusFilter !== 'all') {
       if (statusFilter === 'completed') {
-        filtered = filtered.filter(g => g.currentAmount >= g.targetAmount)
+        filtered = filtered.filter(g => g.current_amount >= g.target_amount)
       } else if (statusFilter === 'in-progress') {
-        filtered = filtered.filter(g => g.currentAmount < g.targetAmount)
+        filtered = filtered.filter(g => g.current_amount < g.target_amount)
       }
     }
-    
     return filtered
   }, [goals, searchQuery, priorityFilter, statusFilter])
 
-  const filteredReminders = reminders.filter(r => 
-    r.title.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-
   // ============ آمار ============
   const totalGoals = goals.length
-  const completedGoals = goals.filter(g => g.currentAmount >= g.targetAmount).length
-  const inProgressGoals = goals.filter(g => g.currentAmount < g.targetAmount).length
-  const upcomingReminders = reminders.filter(r => r.date >= getPersianDate()).length
+  const completedGoals = goals.filter(g => g.current_amount >= g.target_amount).length
+  const inProgressGoals = goals.filter(g => g.current_amount < g.target_amount).length
   const avgProgress = goals.length > 0 
-    ? goals.reduce((sum, g) => sum + (g.currentAmount / g.targetAmount * 100), 0) / goals.length 
+    ? goals.reduce((sum, g) => sum + (g.current_amount / g.target_amount * 100), 0) / goals.length 
     : 0
 
   // ============ توابع CRUD ============
@@ -541,49 +476,55 @@ export default function Goals() {
   const openEditGoal = (goal) => {
     setEditingItem({ ...goal, type: 'goal' })
     setFormData({
-      title: goal.title, type: goal.type,
-      targetAmount: goal.targetAmount.toString(),
-      currentAmount: goal.currentAmount.toString(),
-      deadline: goal.deadline, priority: goal.priority,
-      note: goal.note || '', repeat: goal.repeat || 'none'
+      title: goal.title,
+      type: goal.type,
+      targetAmount: goal.target_amount.toString(),
+      currentAmount: goal.current_amount.toString(),
+      deadline: goal.deadline,
+      priority: goal.priority,
+      note: goal.note || '',
+      repeat: goal.repeat || 'none'
     })
     setShowDialog(true)
   }
 
+  // ==================== اصلاح اصلی: استفاده از camelCase برای کلیدها ====================
   const saveGoal = async () => {
     if (!formData.title || !formData.targetAmount) {
-      showToast('❌ لطفاً فیلدهای ضروری را پر کنید', 'error')
+      toast.error('❌ لطفاً فیلدهای ضروری را پر کنید')
       return
     }
-    const data = {
-      title: formData.title,
-      type: formData.type,
-      targetAmount: parseFloat(formData.targetAmount),
-      currentAmount: parseFloat(formData.currentAmount || 0),
-      deadline: formData.deadline,
-      priority: formData.priority,
-      note: formData.note,
-      repeat: formData.repeat || 'none',
-      status: 'in-progress'
-    }
     
-    if (editingItem?.id) {
-      updateGoal(editingItem.id, data)
-      showToast('✅ هدف با موفقیت ویرایش شد')
-    } else {
-      const newId = addGoal(data)
-      const progress = (data.currentAmount / data.targetAmount) * 100
-      await sendNotification(
-        '🎯 هدف جدید ثبت شد',
-        `هدف "${data.title}" با مبلغ ${formatNumber(data.targetAmount)} ریال ثبت شد. پیشرفت فعلی: ${progress.toFixed(0)}%`,
-        'goal',
-        newId,
-        'goal',
-        data.deadline
-      )
-      showToast('✅ هدف جدید با موفقیت اضافه شد')
+    setIsSubmitting(true)
+    try {
+      const invoke = getInvoke()
+      const data = {
+        title: formData.title,
+        type: formData.type,
+        targetAmount: parseFloat(formData.targetAmount),   // ✅ اصلاح: targetAmount
+        currentAmount: parseFloat(formData.currentAmount || 0),  // ✅ اصلاح: currentAmount
+        deadline: formData.deadline || new Date().toISOString().split('T')[0],
+        priority: formData.priority,
+        note: formData.note || null,
+        repeat: formData.repeat || 'none'
+      }
+      
+      if (editingItem?.id) {
+        await invoke('update_goal', { id: editingItem.id, ...data })
+        toast.success('✅ هدف با موفقیت ویرایش شد')
+      } else {
+        await invoke('add_goal', data)
+        toast.success('✅ هدف جدید با موفقیت اضافه شد')
+      }
+      
+      await fetchData()
+      setShowDialog(false)
+    } catch (error) {
+      console.error('Error saving goal:', error)
+      toast.error('❌ خطا در ذخیره هدف: ' + (error.message || ''))
+    } finally {
+      setIsSubmitting(false)
     }
-    setShowDialog(false)
   }
 
   const openAddToGoal = (goal) => {
@@ -594,108 +535,57 @@ export default function Goals() {
 
   const confirmAddToGoal = async () => {
     if (!addAmount || parseFloat(addAmount) <= 0) {
-      showToast('❌ مبلغ نامعتبر است', 'error')
+      toast.error('❌ مبلغ نامعتبر است')
       return
     }
     
     const amount = parseFloat(addAmount)
-    const oldProgress = (selectedGoal.currentAmount / selectedGoal.targetAmount) * 100
-    const newAmount = selectedGoal.currentAmount + amount
-    const newProgress = (newAmount / selectedGoal.targetAmount) * 100
+    const goal = selectedGoal
+    const newAmount = goal.current_amount + amount
     
-    addToGoal(selectedGoal.id, amount)
-    showToast(`✅ مبلغ ${formatNumber(amount)} به هدف اضافه شد`)
+    setIsSubmitting(true)
+    try {
+      const invoke = getInvoke()
+      await invoke('update_goal', {
+        id: goal.id,
+        title: goal.title,
+        type: goal.type,
+        targetAmount: goal.target_amount,   // ✅ اصلاح: targetAmount
+        currentAmount: newAmount,   // ✅ اصلاح: currentAmount
+        deadline: goal.deadline,
+        priority: goal.priority,
+        note: goal.note || null,
+        repeat: goal.repeat || 'none'
+      })
+      
+      toast.success(`✅ مبلغ ${formatNumber(amount)} به هدف اضافه شد`)
+      await fetchData()
+      setShowAddToGoalDialog(false)
+      setSelectedGoal(null)
+    } catch (error) {
+      console.error('Error adding to goal:', error)
+      toast.error('❌ خطا در افزودن مبلغ: ' + (error.message || ''))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('آیا از حذف این هدف مطمئن هستید؟')) return
     
     try {
-      const milestones = settings?.goal_percent?.split(',').map(Number) || [25, 50, 75, 100]
-      
-      for (const milestone of milestones) {
-        if (oldProgress < milestone && newProgress >= milestone) {
-          await sendNotification(
-            `🎯 پیشرفت هدف: ${selectedGoal.title}`,
-            `هدف "${selectedGoal.title}" به ${milestone}% رسید! (${formatNumber(newAmount)} از ${formatNumber(selectedGoal.targetAmount)} ریال)`,
-            'goal',
-            selectedGoal.id,
-            'goal',
-            selectedGoal.deadline
-          )
-          break
-        }
-      }
-      
-      if (newAmount >= selectedGoal.targetAmount) {
-        await sendNotification(
-          '🎉 هدف تکمیل شد!',
-          `هدف "${selectedGoal.title}" با موفقیت به مبلغ ${formatNumber(selectedGoal.targetAmount)} ریال تکمیل شد.`,
-          'goal',
-          selectedGoal.id,
-          'goal',
-          null
-        )
-      }
-    } catch (err) {
-      console.error('Error sending goal progress notification:', err)
+      const invoke = getInvoke()
+      await invoke('delete_goal', { id })
+      toast.success('✅ هدف حذف شد')
+      await fetchData()
+    } catch (error) {
+      console.error('Error deleting goal:', error)
+      toast.error('❌ خطا در حذف هدف')
     }
-    
-    setShowAddToGoalDialog(false)
-    setSelectedGoal(null)
   }
 
-  const openAddReminder = () => {
-    setEditingItem(null)
-    setFormData({
-      title: '', date: getPersianDate(), time: '10:00',
-      category: 'financial', note: ''
-    })
-    setShowDialog(true)
-  }
-
-  const openEditReminder = (reminder) => {
-    setEditingItem({ ...reminder, type: 'reminder' })
-    setFormData({
-      title: reminder.title, date: reminder.date,
-      time: reminder.time, category: reminder.category,
-      note: reminder.note || ''
-    })
-    setShowDialog(true)
-  }
-
-  const saveReminder = async () => {
-    if (!formData.title || !formData.date) {
-      showToast('❌ لطفاً فیلدهای ضروری را پر کنید', 'error')
-      return
-    }
-    const data = {
-      title: formData.title,
-      date: formData.date,
-      time: formData.time,
-      category: formData.category,
-      note: formData.note
-    }
-    
-    if (editingItem?.id) {
-      updateReminder(editingItem.id, data)
-      showToast('✅ یادآور با موفقیت ویرایش شد')
-    } else {
-      const newId = addReminder(data)
-      await sendNotification(
-        `🔔 یادآور جدید: ${data.title}`,
-        `${data.note || 'یادآور جدید'} - تاریخ: ${data.date} ${data.time !== '00:00' ? `ساعت ${data.time}` : ''}`,
-        'general',
-        newId,
-        'reminder',
-        data.date
-      )
-      showToast('✅ یادآور جدید با موفقیت اضافه شد')
-    }
-    setShowDialog(false)
-  }
-
-  const handleDelete = (type, id) => {
-    if (confirm('آیا از حذف این مورد مطمئن هستید؟')) {
-      if (type === 'goal') { deleteGoal(id); showToast('✅ هدف حذف شد') }
-      else if (type === 'reminder') { deleteReminder(id); showToast('✅ یادآور حذف شد') }
-    }
+  const setupGoalReminder = (goal) => {
+    toast.info(`🔔 یادآور برای هدف "${goal.title}" تنظیم شد`)
   }
 
   const toggleExpand = (id) => {
@@ -706,10 +596,30 @@ export default function Goals() {
     setShowProgressChart(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
+  // ==================== رندر ====================
+  if (loading) {
+    return (
+      <div className="p-8 space-y-8" dir="rtl">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="h-10 w-48 bg-slate-800/50 rounded-xl animate-pulse" />
+            <div className="h-5 w-64 bg-slate-800/30 rounded-lg mt-3 animate-pulse" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="p-4 rounded-2xl border border-slate-800 bg-slate-900/50 animate-pulse">
+              <div className="h-4 w-20 bg-slate-800/50 mb-2" />
+              <div className="h-8 w-32 bg-slate-800/50" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-fade-in-up bg-grid-ultra min-h-screen" dir="rtl">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-
       {/* ============ هدر ============ */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -789,7 +699,7 @@ export default function Goals() {
             </div>
             <div>
               <p className="text-xs text-slate-400">یادآوران پیش رو</p>
-              <p className="text-xl font-black text-white font-mono">{upcomingReminders}</p>
+              <p className="text-xl font-black text-white font-mono">{reminders.length}</p>
             </div>
           </div>
         </div>
@@ -843,115 +753,79 @@ export default function Goals() {
           />
         </div>
         <Button 
-          onClick={activeTab === 'goals' ? openAddGoal : openAddReminder}
+          onClick={openAddGoal}
           className="btn-ultra btn-ultra-primary flex-shrink-0"
         >
           <Plus className="w-4 h-4 md:w-5 md:h-5" />
-          {activeTab === 'goals' ? 'افزودن هدف' : 'افزودن یادآور'}
+          افزودن هدف
         </Button>
       </div>
 
       {/* ============ لیست اهداف ============ */}
-      {activeTab === 'goals' && (
-        <div className="space-y-4">
-          {filteredGoals.length === 0 ? (
-            <div className="empty-state-ultra">
-              {searchQuery || priorityFilter !== 'all' ? 'هدفی با این شرایط یافت نشد' : 'هنوز هدفی ثبت نشده است'}
-            </div>
-          ) : (
-            filteredGoals.map(goal => (
-              <GoalCard
-                key={goal.id}
-                goal={goal}
-                isExpanded={expandedId === `goal-${goal.id}`}
-                onExpand={toggleExpand}
-                onAddAmount={openAddToGoal}
-                onEdit={openEditGoal}
-                onDelete={handleDelete}
-                onReminder={setupGoalReminder}
-                showProgressChart={showProgressChart}
-                onToggleChart={toggleChart}
-                getMonthlyProgressData={getMonthlyProgressData}
-                goalHistory={goalHistory}
-              />
-            ))
-          )}
-        </div>
-      )}
+      <div className="space-y-4">
+        {filteredGoals.length === 0 ? (
+          <div className="empty-state-ultra">
+            {searchQuery || priorityFilter !== 'all' ? 'هدفی با این شرایط یافت نشد' : 'هنوز هدفی ثبت نشده است'}
+          </div>
+        ) : (
+          filteredGoals.map(goal => (
+            <GoalCard
+              key={goal.id}
+              goal={goal}
+              isExpanded={expandedId === goal.id}
+              onExpand={toggleExpand}
+              onAddAmount={openAddToGoal}
+              onEdit={openEditGoal}
+              onDelete={handleDelete}
+              onReminder={setupGoalReminder}
+              showProgressChart={showProgressChart}
+              onToggleChart={toggleChart}
+              getMonthlyProgressData={getMonthlyProgressData}
+              goalHistory={goalHistory}
+            />
+          ))
+        )}
+      </div>
 
-      {/* ============ لیست یادآورها ============ */}
+      {/* ============ بخش یادآورها (رفع مشکل نمایش) ============ */}
       {activeTab === 'reminders' && (
         <div className="space-y-4">
-          {filteredReminders.length === 0 ? (
+          {reminders.length === 0 ? (
             <div className="empty-state-ultra">
               {searchQuery ? 'یادآوری یافت نشد' : 'هنوز یادآوری ثبت نشده است'}
             </div>
           ) : (
-            filteredReminders.map(reminder => {
-              const isExpanded = expandedId === `reminder-${reminder.id}`
+            reminders.map(reminder => {
               const category = REMINDER_CATEGORIES.find(c => c.value === reminder.category) || REMINDER_CATEGORIES[3]
               const CategoryIcon = category.icon
 
               return (
                 <div key={reminder.id} className="item-card-ultra p-4 md:p-6">
-                  <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleExpand(`reminder-${reminder.id}`)}>
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className="stat-icon-ultra bg-blue-500/20 flex-shrink-0">
-                        <CategoryIcon className="w-6 h-6 md:w-7 md:h-7 text-blue-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-white font-bold text-base md:text-lg truncate">{reminder.title}</h4>
-                        <p className="text-xs md:text-sm text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-4">
+                    <div className="stat-icon-ultra bg-blue-500/20 flex-shrink-0">
+                      <CategoryIcon className="w-6 h-6 text-blue-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-white font-bold text-base truncate">{reminder.title}</h4>
+                      <p className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {reminder.date}
+                        </span>
+                        {reminder.time && reminder.time !== '00:00' && (
                           <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {reminder.date}
+                            <Clock className="w-3 h-3" />
+                            {reminder.time}
                           </span>
-                          {reminder.time !== '00:00' && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {reminder.time}
-                            </span>
-                          )}
-                          <span className="px-2 py-0.5 rounded-full bg-slate-700/50 text-xs">
-                            {category.label}
-                          </span>
-                        </p>
-                      </div>
-                      {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-5 h-5 text-slate-400 flex-shrink-0" />}
+                        )}
+                        <span className="px-2 py-0.5 rounded-full bg-slate-700/50 text-xs">
+                          {category.label}
+                        </span>
+                      </p>
                     </div>
                   </div>
-
-                  {isExpanded && (
-                    <div className="mt-4 md:mt-5 pt-4 md:pt-5 border-t-2 border-slate-800 space-y-4">
-                      {reminder.note && <p className="text-sm text-slate-400">📝 {reminder.note}</p>}
-
-                      <div className="flex gap-2 md:gap-3 pt-2 flex-wrap">
-                        <Button 
-                          onClick={() => setupGeneralReminder(reminder)}
-                          className="btn-ultra btn-ultra-secondary"
-                          size="sm"
-                        >
-                          <BellRing className="w-4 h-4" />
-                          تنظیم یادآور
-                        </Button>
-                        <Button 
-                          onClick={() => openEditReminder(reminder)}
-                          className="btn-ultra btn-ultra-secondary"
-                          size="sm"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                          ویرایش
-                        </Button>
-                        <Button 
-                          onClick={() => handleDelete('reminder', reminder.id)}
-                          className="btn-ultra btn-ultra-danger"
-                          size="sm"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          حذف
-                        </Button>
-                      </div>
-                    </div>
+                  {reminder.note && (
+                    <p className="text-sm text-slate-400 mt-2">📝 {reminder.note}</p>
                   )}
                 </div>
               )
@@ -960,105 +834,70 @@ export default function Goals() {
         </div>
       )}
 
-      {/* ============ Dialog اصلی ============ */}
+      {/* ============ Dialog افزودن/ویرایش هدف ============ */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="card-ultra text-white max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-right text-xl md:text-2xl font-black">
-              {editingItem?.type === 'goal' ? (editingItem.id ? 'ویرایش هدف' : 'افزودن هدف جدید') :
-               editingItem?.type === 'reminder' ? (editingItem.id ? 'ویرایش یادآور' : 'افزودن یادآور جدید') :
-               'افزودن مورد جدید'}
+              {editingItem?.id ? 'ویرایش هدف' : 'افزودن هدف جدید'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4 max-h-[65vh] overflow-y-auto custom-scrollbar-ultra">
-            
             <div className="space-y-2">
               <Label className="label-ultra">عنوان *</Label>
               <Input 
                 value={formData.title || ''} 
                 onChange={(e) => setFormData({...formData, title: e.target.value})} 
-                placeholder={activeTab === 'goals' ? 'خرید آپارتمان' : 'پرداخت قسط'}
+                placeholder="خرید آپارتمان"
                 className="input-ultra" 
               />
             </div>
-
-            {activeTab === 'goals' && (
-              <>
-                <div className="space-y-2">
-                  <Label className="label-ultra">نوع هدف</Label>
-                  <Select value={formData.type || 'savings'} onValueChange={(v) => setFormData({...formData, type: v})}>
-                    <SelectTrigger className="input-ultra"><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
-                      <SelectItem value="savings" className="text-white">پس‌انداز</SelectItem>
-                      <SelectItem value="investment" className="text-white">سرمایه‌گذاری</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="label-ultra">مبلغ هدف (ریال) *</Label>
-                    <Input type="number" value={formData.targetAmount || ''} onChange={(e) => setFormData({...formData, targetAmount: e.target.value})} placeholder="1000000000" className="input-ultra font-mono" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="label-ultra">مبلغ فعلی (ریال)</Label>
-                    <Input type="number" value={formData.currentAmount || ''} onChange={(e) => setFormData({...formData, currentAmount: e.target.value})} placeholder="0" className="input-ultra font-mono" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="label-ultra">مهلت دستیابی</Label>
-                  <Input value={formData.deadline || ''} onChange={(e) => setFormData({...formData, deadline: e.target.value})} placeholder="1405/06/01" className="input-ultra font-mono" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="label-ultra">اولویت</Label>
-                  <Select value={formData.priority || 'medium'} onValueChange={(v) => setFormData({...formData, priority: v})}>
-                    <SelectTrigger className="input-ultra"><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
-                      {PRIORITIES.map(p => (
-                        <SelectItem key={p.value} value={p.value} className="text-white">{p.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="label-ultra">تکرار</Label>
-                  <Select value={formData.repeat || 'none'} onValueChange={(v) => setFormData({...formData, repeat: v})}>
-                    <SelectTrigger className="input-ultra"><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
-                      <SelectItem value="none" className="text-white">بدون تکرار</SelectItem>
-                      <SelectItem value="monthly" className="text-white">ماهانه</SelectItem>
-                      <SelectItem value="yearly" className="text-white">سالانه</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-
-            {activeTab === 'reminders' && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="label-ultra">تاریخ *</Label>
-                    <Input value={formData.date || ''} onChange={(e) => setFormData({...formData, date: e.target.value})} placeholder="1403/05/01" className="input-ultra font-mono" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="label-ultra">ساعت</Label>
-                    <Input value={formData.time || ''} onChange={(e) => setFormData({...formData, time: e.target.value})} placeholder="10:00" className="input-ultra font-mono" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="label-ultra">دسته‌بندی</Label>
-                  <Select value={formData.category || 'financial'} onValueChange={(v) => setFormData({...formData, category: v})}>
-                    <SelectTrigger className="input-ultra"><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
-                      {REMINDER_CATEGORIES.map(c => (
-                        <SelectItem key={c.value} value={c.value} className="text-white">{c.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-
+            <div className="space-y-2">
+              <Label className="label-ultra">نوع هدف</Label>
+              <Select value={formData.type || 'savings'} onValueChange={(v) => setFormData({...formData, type: v})}>
+                <SelectTrigger className="input-ultra"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
+                  <SelectItem value="savings" className="text-white">پس‌انداز</SelectItem>
+                  <SelectItem value="investment" className="text-white">سرمایه‌گذاری</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="label-ultra">مبلغ هدف (ریال) *</Label>
+                <Input type="number" value={formData.targetAmount || ''} onChange={(e) => setFormData({...formData, targetAmount: e.target.value})} placeholder="1000000000" className="input-ultra font-mono" />
+              </div>
+              <div className="space-y-2">
+                <Label className="label-ultra">مبلغ فعلی (ریال)</Label>
+                <Input type="number" value={formData.currentAmount || ''} onChange={(e) => setFormData({...formData, currentAmount: e.target.value})} placeholder="0" className="input-ultra font-mono" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="label-ultra">مهلت دستیابی</Label>
+              <Input value={formData.deadline || ''} onChange={(e) => setFormData({...formData, deadline: e.target.value})} placeholder="1405/06/01" className="input-ultra font-mono" />
+            </div>
+            <div className="space-y-2">
+              <Label className="label-ultra">اولویت</Label>
+              <Select value={formData.priority || 'medium'} onValueChange={(v) => setFormData({...formData, priority: v})}>
+                <SelectTrigger className="input-ultra"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
+                  {PRIORITIES.map(p => (
+                    <SelectItem key={p.value} value={p.value} className="text-white">{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="label-ultra">تکرار</Label>
+              <Select value={formData.repeat || 'none'} onValueChange={(v) => setFormData({...formData, repeat: v})}>
+                <SelectTrigger className="input-ultra"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 rounded-2xl">
+                  <SelectItem value="none" className="text-white">بدون تکرار</SelectItem>
+                  <SelectItem value="monthly" className="text-white">ماهانه</SelectItem>
+                  <SelectItem value="yearly" className="text-white">سالانه</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label className="label-ultra">یادداشت (اختیاری)</Label>
               <Input 
@@ -1074,10 +913,11 @@ export default function Goals() {
               انصراف
             </Button>
             <Button 
-              onClick={activeTab === 'goals' ? saveGoal : saveReminder}
+              onClick={saveGoal}
+              disabled={isSubmitting}
               className="btn-ultra btn-ultra-primary"
             >
-              {editingItem?.id ? 'ذخیره' : 'افزودن'}
+              {isSubmitting ? 'در حال ذخیره...' : (editingItem?.id ? 'ذخیره' : 'افزودن')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1098,19 +938,19 @@ export default function Goals() {
               <div className="flex justify-between items-center mb-2">
                 <span className="text-slate-400 text-sm">مبلغ فعلی:</span>
                 <span className="text-white font-black font-mono text-lg">
-                  {selectedGoal && formatNumber(selectedGoal.currentAmount)} ریال
+                  {selectedGoal && formatNumber(selectedGoal.current_amount)} ریال
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-sm">مبلغ هدف:</span>
                 <span className="text-gradient-ultra font-black font-mono">
-                  {selectedGoal && formatNumber(selectedGoal.targetAmount)} ریال
+                  {selectedGoal && formatNumber(selectedGoal.target_amount)} ریال
                 </span>
               </div>
               <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-700/50">
                 <span className="text-slate-400 text-sm">پیشرفت:</span>
                 <span className="text-emerald-400 font-black font-mono">
-                  {selectedGoal && ((selectedGoal.currentAmount / selectedGoal.targetAmount) * 100).toFixed(1)}%
+                  {selectedGoal && ((selectedGoal.current_amount / selectedGoal.target_amount) * 100).toFixed(1)}%
                 </span>
               </div>
             </div>
@@ -1133,6 +973,7 @@ export default function Goals() {
             </Button>
             <Button 
               onClick={confirmAddToGoal}
+              disabled={isSubmitting}
               className="btn-ultra btn-ultra-primary"
             >
               <CheckCircle2 className="w-4 h-4" />

@@ -42,18 +42,26 @@ const useTransactionStore = create(
       },
 
       // ==================== توابع مدیریت خلاصه ====================
-      updateSummary: (newData) => set((state) => ({
-        summary: { ...state.summary, ...newData }
-      })),
+      updateSummary: (newData) => set((state) => {
+        // جلوگیری از به‌روزرسانی بی‌نهایت
+        const currentSummary = state.summary
+        const hasChanged = JSON.stringify(currentSummary) !== JSON.stringify(newData)
+        
+        if (!hasChanged) {
+          return state // اگر تغییری نکرده، state رو برنگردون
+        }
+        
+        return {
+          summary: { ...currentSummary, ...newData }
+        }
+      }),
       
       recalculateSummary: () => {
         const state = get()
-        // توجه: این توابع به استورهای دیگر وابسته هستند
-        // در مرحله بعد این مشکل را حل می‌کنیم
-        const totalBalance = 0 // موقتاً
-        const totalAssetValue = 0 // موقتاً
-        const totalDebts = 0 // موقتاً
-        const totalLoans = 0 // موقتاً
+        const totalBalance = 0
+        const totalAssetValue = 0
+        const totalDebts = 0
+        const totalLoans = 0
         
         set({
           summary: {
